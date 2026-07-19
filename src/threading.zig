@@ -38,9 +38,12 @@ pub fn run_commands(items: []const []const u8, config: *const runner.Config) !vo
         index += batch_size;
     }
 
-    if (cmd_failed.load(.monotonic) and !config.ignore_errors) {
-        logger.out(.err, "command failed. stopping", .{});
-        return error.CommandFailed;
+    if (cmd_failed.load(.monotonic)) {
+	logger.out_adv(false, .info, null, "\n", .{});
+        logger.out(if (config.ignore_errors) .warning else .err, "one or more commands failed{s}", .{if (config.ignore_errors) "" else ". stopping"});
+
+        if (!config.ignore_errors)
+            return error.CommandFailed;
     }
 }
 
@@ -74,7 +77,7 @@ fn worker(cmd: []const u8, needs_lock: bool) void {
         logger.log_mutex.lock(globals.init.io) catch return;
     }
     defer if (needs_lock) logger.log_mutex.unlock(globals.init.io);
-    logger.stdout.interface.writeAll(output) catch return;
+    std.Io.File.stdout().writeStreamingAll(globals.init.io, output) catch return;
 }
 
 fn create_process(cmd: []const u8) !std.process.RunResult {

@@ -1,6 +1,6 @@
 FILES = "src/main.zig"
 OUT = "grit"
-DEBUG_FLAGS = "-O Debug -freference-trace=10 -lc" # -Dsanitize=address"
+DEBUG_FLAGS = "-O Debug -freference-trace=10 -lc"
 RELEASE_FLAGS = "-O ReleaseSmall -fstrip -lc"
 
 clean {
@@ -27,8 +27,4 @@ install {
   @parallel
   "copy $OUT.exe c:\grit"
   "copy LICENSE c:\grit"
-}
-
-error {
-  "$UNDEFINED variable"
 }

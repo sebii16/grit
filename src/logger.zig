@@ -19,21 +19,16 @@ pub const Config = struct {
     build_file: []const u8 = "",
 };
 
-pub var stdout: std.Io.File.Writer = undefined;
-pub var stderr: std.Io.File.Writer = undefined;
-
 pub fn init() void {
     if (Config.current.is_inited) return;
 
-    stdout = std.Io.File.stdout().writer(globals.init.io, &.{});
-    stderr = std.Io.File.stderr().writer(globals.init.io, &.{});
-
-    const is_tty = std.Io.File.stdout().isTty(globals.init.io) catch false;
+    const stdout = std.Io.File.stdout();
+    const is_tty = stdout.isTty(globals.init.io) catch false;
     const is_dumb = globals.init.environ_map.get("DUMB");
 
     const ansi = if (is_tty and builtin.os.tag == .windows) br: {        
         std.Io.File.stdout().enableAnsiEscapeCodes(globals.init.io) catch {};
-        break :br std.Io.File.stdout().supportsAnsiEscapeCodes(globals.init.io) catch false;
+        break :br stdout.supportsAnsiEscapeCodes(globals.init.io) catch false;
     } else is_tty and (is_dumb == null or !std.mem.eql(u8, is_dumb.?, "dumb"));
 
     Config.current = .{
@@ -54,25 +49,28 @@ pub const Colors = struct {
     }
 };
 
-pub fn out(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+pub fn out(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
     out_adv(true, level, null, fmt, args);
 }
 
 pub var log_mutex: std.Io.Mutex = .init;
 
-pub fn out_locked(comptime level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+pub fn out_locked(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
     log_mutex.lock(globals.init.io) catch return;
     defer log_mutex.unlock(globals.init.io);
     out(level, fmt, args);
 }
 
-pub fn out_adv(nl: bool, comptime level: LogLevel, line: ?usize, comptime fmt: []const u8, args: anytype) void {
+pub fn out_adv(nl: bool, level: LogLevel, line: ?usize, comptime fmt: []const u8, args: anytype) void {
     if ((level == .debug and builtin.mode != .Debug) or !Config.current.is_inited) return;
 
-    var sink = if (level == .err or level == .warning)
-        stderr
+    var stdout_writer = std.Io.File.stdout().writer(globals.init.io, &.{});
+    var stderr_writer = std.Io.File.stderr().writer(globals.init.io, &.{});
+
+    var output = if (level == .err or level == .warning)
+        &stderr_writer.interface
     else
-        stdout;
+        &stdout_writer.interface;
 
     const prefix = switch (level) {
         .info => "",
@@ -90,7 +88,7 @@ pub fn out_adv(nl: bool, comptime level: LogLevel, line: ?usize, comptime fmt: [
     };
 
     if (line != null)
-        sink.interface.print(
+        output.print(
             "{s}:{d}: {s}{s}{s}" ++ fmt ++ "{s}",
             .{
                 Config.current.build_file,
@@ -103,7 +101,7 @@ pub fn out_adv(nl: bool, comptime level: LogLevel, line: ?usize, comptime fmt: [
             },
         ) catch return
     else
-        sink.interface.print(
+        output.print(
             "{s}{s}{s}" ++ fmt ++ "{s}",
             .{
                 color_code,

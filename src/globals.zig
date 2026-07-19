@@ -9,7 +9,7 @@ pub var init: std.process.Init = undefined;
 pub const DEFAULT_BUILD_FILE = "build.grit";
 
 const ver =
-    "grit 0.5.1 (" ++ os ++ " " ++ arch ++ ")" ++ if (builtin.mode == .Debug) " [Debug build]" else "";
+    "grit 0.5.2 (" ++ os ++ " " ++ arch ++ ")" ++ if (builtin.mode == .Debug) " [Debug build]" else "";
 
 pub const ver_msg =
     ver ++
@@ -28,12 +28,12 @@ pub const help_msg =
     \\
     \\Build flags:
     \\  -d, --dry       Print commands without executing them.
-    \\  --noexpand      Disable variable expansion.
-    \\  -f, --file      Specify the build file.
+    \\  -f, --file      Specify the build file (default = build.grit).
     \\  -r, --rule      Specify the build rule.
     \\  -t, --threads   Specify the max. amount of threads (default = CPU core count).
     \\  --ignore-errors Ignore execution errors.
     \\  --no-colors     Disable colors.
+    \\  --no-expand      Disable variable expansion.
     \\
     \\Global flags: 
     \\  -h, --help      Print help message.

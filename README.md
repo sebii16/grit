@@ -32,7 +32,7 @@ Declare variables with `NAME = "value"` and expand them inside commands with `$N
 
 To get a literal `$`, write `$$`.
 
-Disable expansion completely by using the `--noexpand` flag.
+Disable expansion completely by using the `--no-expand` flag.
 
 ### Strings
 
@@ -113,12 +113,12 @@ grit release -t 4
 ```text
 Build flags:
 -d, --dry       Print commands without executing them.
---noexpand      Disable variable expansion.
 -f, --file      Specify the build file.
 -r, --rule      Specify the build rule.
 -t, --threads   Specify the max. amount of threads (default = CPU core count)
 --ignore-errors Ignore execution errors.
 --no-colors     Disable colors.
+--no-expand      Disable variable expansion.
 
 Global flags: 
 -h, --help      Show help message.

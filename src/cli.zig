@@ -55,7 +55,7 @@ pub fn parse_args() !ParsedArgs {
 
         if (cmp(arg, "--dry") or cmp(arg, "-d")) {
             res.config.dry_run = true;
-        } else if (cmp(arg, "--noexpand")) {
+        } else if (cmp(arg, "--no-expand")) {
             res.config.no_expand = true;
         } else if (cmp(arg, "--file") or cmp(arg, "-f")) {
             res.config.build_file = get_value(&i, args) catch |e| {

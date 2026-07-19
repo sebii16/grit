@@ -51,12 +51,10 @@ fn expand_vars(input: []const u8, rule_name: []const u8, vars: *const parser.Var
             }
 
             const var_name = input[start..end];
-            var value = vars.get(var_name);
-            if (value == null) {
-                value = try handle_undefined_var(input, rule_name, var_name, start, end);
-            }
+            const value = vars.get(var_name) orelse 
+                try handle_undefined_var(input, rule_name, var_name, start, end);
 
-            try expanded.appendSlice(globals.init.arena.allocator(), value.?);
+            try expanded.appendSlice(globals.init.arena.allocator(), value);
 
             i = end - 1;
             continue;
@@ -128,8 +126,8 @@ pub fn run_build_rule(ast: []const parser.Ast, config: *Config, prs: *const pars
                     color.get(color.bold),
                     rule,
                     color.get(color.reset),
-                    if (config.no_expand) " [noexpand]" else "",
-                    if (config.dry_run) " [dryrun]" else "",
+                    if (config.no_expand) " [no-expand]" else "",
+                    if (config.dry_run) " [dry-run]" else "",
                     if (config.ignore_errors) " [ignore-errors]" else ""
                 });
 
@@ -164,6 +162,6 @@ pub fn run_build_rule(ast: []const parser.Ast, config: *Config, prs: *const pars
         }
     }
 
-    logger.out_adv(true, .err, null, "build rule '{s}' doesn't exist.", .{rule});
+    logger.out_adv(true, .err, null, "build rule {s}'{s}'{s} doesn't exist.", .{color.get(color.bold), rule, color.get(color.reset)});
     return error.InvalidRule;
 }

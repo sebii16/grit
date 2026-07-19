@@ -12,7 +12,7 @@ pub fn main(init: std.process.Init) u8 {
     logger.init();
 
     var args = cli.parse_args() catch return 1;
-	
+
     logger.Config.current.build_file = args.config.build_file;
 
     args.config.threads = args.config.threads orelse std.Thread.getCpuCount() catch 1;
@@ -24,19 +24,26 @@ pub fn main(init: std.process.Init) u8 {
         .Version => {
             logger.out(.info, "{s}", .{globals.ver_msg});
         },
-        .List, .Run => {
+        .List, .Run => {  
             const src = read_file(args.config.build_file) catch return 1;
             var parser = p.Parser{ .lexer = .{ .src = src }};
             const ast = parser.parse_all() catch return 1;
             switch (args.action) {
                 .List => {
-                    logger.out(.info, "available rules:", .{});
+                    logger.out(.info, "{s}available rules:{s}", .{logger.Colors.get(logger.Colors.bold), logger.Colors.get(logger.Colors.reset)});
                     for (ast) |n| {
                         switch (n) {
                             .RuleDecl => |r| {
-                            logger.out(.info, "  {s}", .{r.name});
-                        },
-                        else => {},
+                                logger.out(.info, "  {s} {{", .{r.name});
+                                for (r.steps) |step| {
+                                    switch (step) {
+                                        .cmd => |c| logger.out(.info, "    {s}", .{c}),
+                                        else => {},
+                                    }
+                                }
+                                logger.out(.info, "  }}\n", .{});
+                            },
+                            else => {},
                         }
                     }
                 },
