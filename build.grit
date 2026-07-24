@@ -1,22 +1,23 @@
 FILES = "src/main.zig"
 OUT = "grit"
 DEBUG_FLAGS = "-O Debug -freference-trace=10 -lc"
-RELEASE_FLAGS = "-O ReleaseSmall -fstrip -lc"
+RELEASE_FLAGS = "-O ReleaseFast -fstrip -lc"
 
 clean {
   @parallel
   "rm -f *.exe"
   "rm -f *.pdb"
   "rm -f $OUT"
+  "rm -f $OUT-d"
 }
 
 @default
 debug {
-  "zig build-exe $FILES -femit-bin=$OUT-d.exe $DEBUG_FLAGS"
+  "zig build-exe $FILES -femit-bin=$OUT-d $DEBUG_FLAGS"
 }
 
 release {
-  "zig build-exe $FILES -femit-bin=$OUT.exe $RELEASE_FLAGS"
+  "zig build-exe $FILES -femit-bin=$OUT $RELEASE_FLAGS"
 }
 
 linux {
@@ -27,4 +28,11 @@ install {
   @parallel
   "copy $OUT.exe c:\grit"
   "copy LICENSE c:\grit"
+}
+
+test {
+  @if os == "linux" {
+    'echo "os == linux"'
+  }
+  'echo "hello world"'
 }

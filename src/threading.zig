@@ -18,9 +18,11 @@ pub fn run_commands(items: []const []const u8, config: *const runner.Config) !vo
         return;
     }
 
-    const thread_count = @min(config.threads.?, items.len);
+    const thread_count = @min(config.threads, items.len);
     const threads = try gpa.alloc(std.Thread, thread_count);
     defer gpa.free(threads);
+
+    logger.out(.debug, "thread_count = {}", .{ thread_count });
 
     var index: usize = 0;
 

@@ -6,12 +6,14 @@ pub const TokenType = enum {
     TOK_EOF,
     TOK_NL,
     TOK_EQ,
+    TOK_DEQ,
+    TOK_NOEQ,
     TOK_LBRACE,
     TOK_RBRACE,
     TOK_COMMENT,
     TOK_STRING,
     TOK_IDENT,
-    TOK_ANNOTATION,
+    TOK_DIRECTIVE,
     TOK_LPAREN,
     TOK_RPAREN,
     TOK_COMMA,
@@ -43,10 +45,23 @@ pub const Lexer = struct {
                     return make_token(.TOK_NL, self);
                 },
                 ' ', '\t', '\r' => continue,
-                '=' => return make_token(.TOK_EQ, self),
+                '=' => {
+                    if (advance(self) != '=') {
+                        self.index -= 1;
+                        return make_token(.TOK_EQ, self);
+                    }
+                    return make_token(.TOK_DEQ, self);
+                },
+                '!' => {
+                    if (advance(self) != '=') {
+                        self.index -= 1;
+                        continue;
+                    }
+                    return make_token(.TOK_NOEQ, self);
+                },
                 '{' => return make_token(.TOK_LBRACE, self),
                 '}' => return make_token(.TOK_RBRACE, self),
-                '@' => return make_annot_token(self),
+                '@' => return self.make_directive_token(),
                 '#' => {
                     handle_comments(self);
                     continue;
@@ -65,6 +80,14 @@ pub const Lexer = struct {
                 },
             }
         }
+    }
+
+    fn make_directive_token(self: *Lexer) !Token {
+        self.start_index += 1;
+
+        _ = make_ident_token(self);
+
+        return make_token(.TOK_DIRECTIVE, self);
     }
 };
 
@@ -120,10 +143,3 @@ fn make_ident_token(lx: *Lexer) Token {
     return make_token(.TOK_IDENT, lx);
 }
 
-fn make_annot_token(lx: *Lexer) !Token {
-    lx.start_index += 1;
-
-    _ = make_ident_token(lx);
-
-    return make_token(.TOK_ANNOTATION, lx);
-}

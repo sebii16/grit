@@ -12,7 +12,7 @@ pub const Config = struct {
     build_file: []const u8 = globals.DEFAULT_BUILD_FILE,
     dry_run: bool = false,
     no_expand: bool = false,
-    threads: ?usize = null,
+    threads: usize = 0,
     parallel: bool = false,
     rule_name: ?[]const u8 = null,
     ignore_errors: bool = false,
@@ -109,7 +109,7 @@ pub fn run_build_rule(ast: []const parser.Ast, config: *Config, prs: *const pars
                             has_cmd = true;
                             break;
                         },
-                        .parallel => {},
+                        else => {},
                     }
                 }
 
@@ -133,13 +133,20 @@ pub fn run_build_rule(ast: []const parser.Ast, config: *Config, prs: *const pars
 
                 for (r.steps) |step| {
                     switch (step) {
-                        .parallel => |enabled| {
-                            if (config.parallel and !enabled and batch.items.len > 0) {
-                                try threading.run_commands(batch.items, config);
-                                batch.clearRetainingCapacity();
+                        .directive => |d| {
+                            switch (d) {
+                                .sequential => {
+                                    if (config.parallel and batch.items.len > 0) {
+                                        try threading.run_commands(batch.items, config);
+                                        batch.clearRetainingCapacity();
+                                    }
+                                    config.parallel = false;
+                                },
+                                .parallel => config.parallel = true,
+                                .@"if" => logger.out(.debug, "if block here", .{}),
+                                else => unreachable,
                             }
-
-                            config.parallel = enabled;
+                            logger.out(.debug, "parallel = {}", .{ config.parallel });
                         },
                         .cmd => |cmd| {
                             const expanded = if (!config.no_expand) try expand_vars(cmd, rule, &vars) else cmd;
@@ -148,6 +155,11 @@ pub fn run_build_rule(ast: []const parser.Ast, config: *Config, prs: *const pars
                                 try batch.append(globals.init.arena.allocator(), expanded)
                             else 
                                 try threading.run_commands(&.{expanded}, config);
+                        },
+                        .if_block => |block| {
+                            for (block.steps) |ste| {
+                                logger.out(.debug, "{s}", .{ste.cmd});
+                            }
                         },
                     }
                 }

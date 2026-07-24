@@ -15,14 +15,16 @@ pub fn main(init: std.process.Init) u8 {
 
     logger.Config.current.build_file = args.config.build_file;
 
-    args.config.threads = args.config.threads orelse std.Thread.getCpuCount() catch 1;
+    args.config.threads = if (args.config.threads > 0) args.config.threads else std.Thread.getCpuCount() catch 1;
+
+    defer logger.out_adv(true, .debug, null, "arena: {} bytes allocated", .{init.arena.queryCapacity()});
 
     switch (args.action) {
         .Help => {
-            logger.out(.info, "{s}", .{globals.help_msg});
+            logger.out(.info, "{s}", .{ globals.help_msg });
         },
         .Version => {
-            logger.out(.info, "{s}", .{globals.ver_msg});
+            logger.out(.info, "{s}", .{ globals.ver_msg });
         },
         .List, .Run => {  
             const src = read_file(args.config.build_file) catch return 1;
@@ -30,7 +32,7 @@ pub fn main(init: std.process.Init) u8 {
             const ast = parser.parse_all() catch return 1;
             switch (args.action) {
                 .List => {
-                    logger.out(.info, "{s}available rules:{s}", .{logger.Colors.get(logger.Colors.bold), logger.Colors.get(logger.Colors.reset)});
+                    logger.out(.info, "{s}available rules:{s}", .{ logger.Colors.get(logger.Colors.bold), logger.Colors.get(logger.Colors.reset) });
                     for (ast) |n| {
                         switch (n) {
                             .RuleDecl => |r| {
@@ -52,8 +54,6 @@ pub fn main(init: std.process.Init) u8 {
             }
         },
     }
-
-    logger.out_adv(true, .debug, null, "arena: {} bytes allocated", .{init.arena.queryCapacity()});
 
     return 0;
 }

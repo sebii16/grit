@@ -9,7 +9,7 @@ pub var init: std.process.Init = undefined;
 pub const DEFAULT_BUILD_FILE = "build.grit";
 
 const ver =
-    "grit 0.5.2 (" ++ os ++ " " ++ arch ++ ")" ++ if (builtin.mode == .Debug) " [Debug build]" else "";
+    "grit 0.6.0 (" ++ os ++ " " ++ arch ++ ")" ++ if (builtin.mode == .Debug) " [Debug build]" else "";
 
 pub const ver_msg =
     ver ++

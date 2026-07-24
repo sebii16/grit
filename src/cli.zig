@@ -77,7 +77,7 @@ pub fn parse_args() !ParsedArgs {
             if (thread_count == 0) {
                 logger.out_adv(true, .warning, null, "thread count of 0 ignored, using default", .{});
             }
-            res.config.threads = if (thread_count > 0) thread_count else null;
+            res.config.threads = thread_count;
         } else if (cmp(arg, "--ignore-errors")) {
             res.config.ignore_errors = true;
         } else if (cmp(arg, "--no-colors")) {
