@@ -6,13 +6,12 @@ const arch = @tagName(builtin.target.cpu.arch);
 
 pub var init: std.process.Init = undefined;
 
-pub const DEFAULT_BUILD_FILE = "build.grit";
+pub const default_build_file = "build.grit";
 
-const ver =
-    "grit 0.6.0 (" ++ os ++ " " ++ arch ++ ")" ++ if (builtin.mode == .Debug) " [Debug build]" else "";
+pub const ver = "0.6.1";
 
 pub const ver_msg =
-    ver ++
+    "grit " ++ ver ++  " (" ++ os ++ " " ++ arch ++ ")" ++ if (builtin.mode == .Debug) " [Debug build]" else "" ++
     \\
     \\Copyright (c) 2026 sebii16
     \\Licensed under the MIT License - see LICENSE for more info.
@@ -33,10 +32,9 @@ pub const help_msg =
     \\  -t, --threads   Specify the max. amount of threads (default = CPU core count).
     \\  --ignore-errors Ignore execution errors.
     \\  --no-colors     Disable colors.
-    \\  --no-expand      Disable variable expansion.
+    \\  --no-expand     Disable variable expansion.
     \\
     \\Global flags: 
     \\  -h, --help      Print help message.
     \\  -v, --version   Print version and license information.
-    \\  -l, --list      List build rules.
     ;

@@ -9,7 +9,7 @@ const threading = @import("threading.zig");
 const color = logger.Colors;
 
 pub const Config = struct {
-    build_file: []const u8 = globals.DEFAULT_BUILD_FILE,
+    build_file: []const u8 = globals.default_build_file,
     dry_run: bool = false,
     no_expand: bool = false,
     threads: usize = 0,
@@ -101,7 +101,7 @@ fn expandVars(input: []const u8, rule_name: []const u8, vars: *const VarMap) ![]
 }
 
 fn handleUndefinedVar(full_input: []const u8, rule_name: []const u8, var_name: []const u8, start: usize, end: usize) ![]const u8 {
-    const builtin_var = builtins.getBuiltinVariable(var_name) orelse {
+    const builtin_var = builtins.getBuiltinVariable(var_name) catch |e| {
         logger.out(.syntax, "undefined variable in rule {s}'{s}'{s}:\n", .{ color.get(color.bold), rule_name, color.get(color.reset) });
 
         logger.out(.info, "{s}", .{full_input});
@@ -116,7 +116,7 @@ fn handleUndefinedVar(full_input: []const u8, rule_name: []const u8, var_name: [
             color.get(color.reset) 
         });
 
-        return error.InvalidVar;
+        return e;
     };
 
     return builtin_var;
@@ -127,9 +127,6 @@ pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser
         logger.out(.err, "no build rule selected", .{});
         return error.InvalidRule;
     };
-
-    const vars = try makeVarMap(ast);
-    var batch: std.ArrayList([]const u8) = .empty;
 
     for (ast) |node| {
         switch (node) {
@@ -177,6 +174,9 @@ pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser
                     if (config.ignore_errors) " [ignore-errors]" else ""
                 });
 
+                const vars = try makeVarMap(ast);
+                var batch: std.ArrayList([]const u8) = .empty;
+
                 try runSteps(r.steps, config, &vars, &batch, rule);
 
                 if (batch.items.len > 0) {
@@ -220,7 +220,7 @@ fn runSteps(steps: []parser.Step, config: *Config, vars: *const VarMap, batch: *
                     try threading.runCommands(&.{expanded}, config);
             },
             .if_block => |block| {
-                if (block.condition.isTrue()) {
+                if (block.condition.isMet()) {
                     try runSteps(block.steps, config, vars, batch, rule);
                 }
             },

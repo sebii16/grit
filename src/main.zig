@@ -26,32 +26,12 @@ pub fn main(init: std.process.Init) u8 {
         .Version => {
             logger.out(.info, "{s}", .{ globals.ver_msg });
         },
-        .List, .Run => {  
+        .Run => {  
             const src = readFile(args.config.build_file) catch return 1;
             var parser = p.Parser{ .lexer = .{ .src = src }};
             const ast = parser.parseAll() catch return 1;
-            switch (args.action) {
-                .List => {
-                    logger.out(.info, "{s}available rules:{s}", .{ logger.Colors.get(logger.Colors.bold), logger.Colors.get(logger.Colors.reset) });
-                    for (ast) |n| {
-                        switch (n) {
-                            .RuleDecl => |r| {
-                                logger.out(.info, "  {s} {{", .{r.name});
-                                for (r.steps) |step| {
-                                    switch (step) {
-                                        .cmd => |cmd| logger.out(.info, "    {s}", .{cmd}),
-                                        else => {},
-                                    }
-                                }
-                                logger.out(.info, "  }}\n", .{});
-                            },
-                            else => {},
-                        }
-                    }
-                },
-                .Run => runner.runBuildRule(ast, &args.config, &parser) catch return 1,
-                else => unreachable,
-            }
+            
+            runner.runBuildRule(ast, &args.config, &parser) catch return 1;
         },
     }
 

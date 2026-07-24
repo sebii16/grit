@@ -15,14 +15,17 @@ pub const builtin_variables = [_]BuiltinVariable{
     .{ .name = "ARCH", .value = @tagName(builtin.cpu.arch) },
     .{ .name = "TIME", .value = null }, 
     .{ .name = "DATE", .value = null },
+    .{ .name = "CWD", .value = null },
+    .{ .name = "GRIT_VER", .value = globals.ver },
 };
 
 const RuntimeVariable = enum {
-    DATE,
     TIME,
+    DATE,
+    CWD
 };
 
-pub fn getBuiltinVariable(variable: []const u8) ?[]const u8 {
+pub fn getBuiltinVariable(variable: []const u8) ![]const u8 {
     for (builtin_variables) |v| {
         if (!std.mem.eql(u8, v.name, variable))
             continue;
@@ -30,30 +33,35 @@ pub fn getBuiltinVariable(variable: []const u8) ?[]const u8 {
         if (v.value) |value| 
             return value;
 
-        const runtime_var = std.meta.stringToEnum(RuntimeVariable, v.name) orelse return null;
+        const runtime_var = std.meta.stringToEnum(RuntimeVariable, v.name) orelse return error.BuiltinVariableInternal;
 
-        return getRuntimeVariable(runtime_var);
+        return try getRuntimeVariable(runtime_var);
     }
-    return null;
+    return error.InvalidVariable;
 }
 
-fn getRuntimeVariable(variable_type: RuntimeVariable) ?[]const u8 {
+fn getRuntimeVariable(variable_type: RuntimeVariable) ![]const u8 {
+    if (variable_type == .CWD) 
+        return try std.process.currentPathAlloc(globals.init.io, globals.init.arena.allocator());
+
     var time: c.time_t = c.time(null);
-    const tm = c.localtime(&time) orelse return null;
+    const tm = c.localtime(&time) orelse return error.TimeConversionFailed;
     var buf: [10]u8 = undefined;
 
     const res = switch (variable_type) {
-        .DATE => std.fmt.bufPrint(&buf, "{d:0>2}.{d:0>2}.{d:0>2}", .{
+        .DATE => try std.fmt.bufPrint(&buf, "{d:0>2}.{d:0>2}.{d:0>2}", .{
             @as(u32, @intCast(tm.*.tm_mday)),
             @as(u32, @intCast(tm.*.tm_mon + 1)),
             @as(u32, @intCast(tm.*.tm_year + 1900)),
-        }) catch return null,
+        }),
 
-        .TIME => std.fmt.bufPrint(&buf, "{d:0>2}:{d:0>2}", .{
+        .TIME => try std.fmt.bufPrint(&buf, "{d:0>2}:{d:0>2}", .{
             @as(u32, @intCast(tm.*.tm_hour)),
             @as(u32, @intCast(tm.*.tm_min)),
-        }) catch return null,
+        }),
+
+        .CWD => unreachable,
     };
 
-    return globals.init.arena.allocator().dupe(u8, res) catch null;
+    return try globals.init.arena.allocator().dupe(u8, res);
 }

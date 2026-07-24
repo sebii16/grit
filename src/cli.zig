@@ -8,7 +8,6 @@ pub const Actions = enum {
     Help,
     Version,
     Run,
-    List,
 };
 
 pub const ParsedArgs = struct {
@@ -46,9 +45,6 @@ pub fn parseArgs() !ParsedArgs {
                 return res;
             } else if (cmp(arg, "--version") or cmp(arg, "-v")) {
                 res.action = .Version;
-                return res;
-            } else if (cmp(arg, "--list") or cmp(arg, "-l")) {
-                res.action = .List;
                 return res;
             }
         }

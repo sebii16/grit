@@ -39,7 +39,4 @@ install {
 }
 
 test {
-    @if OS == "windows" {
-        'echo "if statement true"'
-    }
 }
