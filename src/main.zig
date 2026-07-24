@@ -11,13 +11,13 @@ pub fn main(init: std.process.Init) u8 {
 
     logger.init();
 
-    var args = cli.parse_args() catch return 1;
+    var args = cli.parseArgs() catch return 1;
 
     logger.Config.current.build_file = args.config.build_file;
 
     args.config.threads = if (args.config.threads > 0) args.config.threads else std.Thread.getCpuCount() catch 1;
 
-    defer logger.out_adv(true, .debug, null, "arena: {} bytes allocated", .{init.arena.queryCapacity()});
+    defer logger.out(.debug, "arena: {} bytes allocated", .{init.arena.queryCapacity()});
 
     switch (args.action) {
         .Help => {
@@ -27,9 +27,9 @@ pub fn main(init: std.process.Init) u8 {
             logger.out(.info, "{s}", .{ globals.ver_msg });
         },
         .List, .Run => {  
-            const src = read_file(args.config.build_file) catch return 1;
+            const src = readFile(args.config.build_file) catch return 1;
             var parser = p.Parser{ .lexer = .{ .src = src }};
-            const ast = parser.parse_all() catch return 1;
+            const ast = parser.parseAll() catch return 1;
             switch (args.action) {
                 .List => {
                     logger.out(.info, "{s}available rules:{s}", .{ logger.Colors.get(logger.Colors.bold), logger.Colors.get(logger.Colors.reset) });
@@ -39,7 +39,7 @@ pub fn main(init: std.process.Init) u8 {
                                 logger.out(.info, "  {s} {{", .{r.name});
                                 for (r.steps) |step| {
                                     switch (step) {
-                                        .cmd => |c| logger.out(.info, "    {s}", .{c}),
+                                        .cmd => |cmd| logger.out(.info, "    {s}", .{cmd}),
                                         else => {},
                                     }
                                 }
@@ -49,7 +49,7 @@ pub fn main(init: std.process.Init) u8 {
                         }
                     }
                 },
-                .Run => runner.run_build_rule(ast, &args.config, &parser) catch return 1,
+                .Run => runner.runBuildRule(ast, &args.config, &parser) catch return 1,
                 else => unreachable,
             }
         },
@@ -58,9 +58,9 @@ pub fn main(init: std.process.Init) u8 {
     return 0;
 }
 
-fn read_file(path: []const u8) ![]const u8 {
+fn readFile(path: []const u8) ![]const u8 {
     return std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), globals.init.io, path, globals.init.arena.allocator(), .unlimited) catch |e| {
-        logger.out_adv(true, .err, null, "failed to read '{s}'", .{path});
+        logger.out(.err, "failed to read '{s}'", .{path});
         return e;
     };
 }

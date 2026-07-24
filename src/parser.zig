@@ -2,6 +2,8 @@ const std = @import("std");
 const lexer = @import("lexer.zig");
 const globals = @import("globals.zig");
 const logger = @import("logger.zig");
+const condition = @import("condition.zig");
+const builtins = @import("builtins.zig");
 
 const Var = struct {
     name: []const u8,
@@ -20,21 +22,12 @@ pub const Directive = enum {
     }
 };
 
-const Condition = struct {
-    left: []const u8,
-    op: enum {
-        eq,
-        noeq
-    },
-    right: []const u8,
-};
-
 const IfBlock = struct {
-    condition: Condition,
+    condition: condition.Condition,
     steps: []Step,
 };
 
-const Step = union(enum) {
+pub const Step = union(enum) {
     cmd: []const u8,
     directive: Directive,
     if_block: IfBlock,
@@ -45,100 +38,67 @@ const Rule = struct {
     steps: []Step,
 };
 
-pub const VarMap = std.StringHashMapUnmanaged([]const u8);
 
 pub const Ast = union(enum) {
     VarDecl: Var,
     RuleDecl: Rule,
-
-    pub fn make_var_map(self: []const Ast) !VarMap {
-        var vars: VarMap = .{};
-
-        var count: u32 = 0;
-        for (self) |node| {
-            switch (node) {
-                .VarDecl => count += 1,
-                else => {},
-            }
-        }
-
-        try vars.ensureTotalCapacity(globals.init.arena.allocator(), count);
-
-        for (self) |node| {
-            switch (node) {
-                .VarDecl => |v| {
-                    if (vars.contains(v.name)) {
-                        logger.out(.syntax, "variable '{s}' redefined", .{v.name});
-                        return error.DuplicateVar;
-                    }
-                    vars.putAssumeCapacity(v.name, v.value);
-                },
-                else => {},
-            }
-        }
-
-        return vars;
-    }
 };
 
 pub const Parser = struct {
     lexer: lexer.Lexer,
     curr: lexer.Token = .{ .value = &[_]u8{}, .type = .TOK__INVALID },
     default_rule: ?[]const u8 = null,
+    pending_default: bool = false,
 
-    pub fn parse_all(self: *Parser) ![]Ast {
+    pub fn parseAll(self: *Parser) ![]Ast {
         const allocator = globals.init.arena.allocator();
         var nodes: std.ArrayList(Ast) = .empty;
-        var pending_default = false;
 
-        try self.next_token();
+        try self.nextToken();
 
         while (self.curr.type != .TOK_EOF) {
             if (self.curr.type == .TOK_DIRECTIVE) {
                 const directive = Directive.parse(self.curr.value);
 
                 if (directive != .default)
-                    return self.syntax_error("directive '{s}' is invalid at top level", .{ self.curr.value });
+                    return self.syntaxError("directive '{s}' is invalid at top level", .{ self.curr.value });
 
-                if (pending_default)
-                    return self.syntax_error("expected rule declaration after @default", .{});
+                if (self.default_rule != null or self.pending_default) 
+                    return self.syntaxError("@default can only be called once", .{});
 
-                if (self.default_rule != null or pending_default == true) 
-                    return self.syntax_error("@default can only be called once", .{});
-
-                pending_default = true;
-                try self.next_token();
+                self.pending_default = true;
+                try self.nextToken();
                 continue;
             }
 
-            const node = try self.parse_decl(&pending_default);
+            const node = try self.parseDecl();
             try nodes.append(allocator, node);
         }
 
-        if (pending_default)
-            return self.syntax_error("no rule found after @default", .{});
+        if (self.pending_default)
+            return self.syntaxError("no rule found after @default", .{});
 
         return nodes.toOwnedSlice(allocator);
     }
 
-    fn parse_decl(self: *Parser, pending_default: *bool) !Ast {
+    fn parseDecl(self: *Parser) !Ast {
         if (self.curr.type != .TOK_IDENT)
-            return self.syntax_error("expected declaration, got '{s}'", .{ @tagName(self.curr.type) });
+            return self.syntaxError("expected declaration, got '{s}'", .{ @tagName(self.curr.type) });
 
         const name = self.curr.value;
-        try self.next_token();
+        try self.nextToken();
 
         switch (self.curr.type) {
             .TOK_EQ => {
                 // Variable
-                if (pending_default.*)
-                    return self.syntax_error("@default must be followed by a rule declaration", .{});
+                if (self.pending_default)
+                    return self.syntaxError("@default must be followed by a rule declaration", .{});
 
-                try self.next_token();
+                try self.nextToken();
                 try self.expect(.TOK_STRING);
 
                 const value = self.curr.value;
-                try self.next_token();
+                try self.nextToken();
 
                 return .{
                     .VarDecl = .{
@@ -149,100 +109,96 @@ pub const Parser = struct {
             },
             .TOK_LBRACE => {
                 // Rule
-                if (pending_default.* == true) {
+                if (self.pending_default) {
                     self.default_rule = name;
-                    pending_default.* = false;
+                    self.pending_default = false;
                 }
 
-                return try self.parse_rule(name);
+                return .{
+                    .RuleDecl = .{
+                        .name = name, 
+                        .steps = try self.parseRule(),
+                    }
+                };
             },
-            else => return self.syntax_error("expected '=' or '{{', got '{s}'", .{ @tagName(self.curr.type) }),
+            else => return self.syntaxError("expected '=' or '{{', got '{s}'", .{ @tagName(self.curr.type) }),
         }
     }
 
-    fn parse_rule(self: *Parser, name: []const u8) !Ast {
-        return .{
-            .RuleDecl = .{
-                .name = name,
-                .steps = try self.parse_block()
-            }
-        };
-    }
-
-    fn parse_block(self: *Parser) anyerror![]Step {
-        try self.next_token();
-        const type_ = &self.curr.type;
-        const value = &self.curr.value;
+    fn parseRule(self: *Parser) ![]Step {
+        try self.nextToken();
         var steps: std.ArrayList(Step) = .empty;
         const allocator = globals.init.arena.allocator();
 
-        while (type_.* != .TOK_RBRACE) {
-            switch (type_.*) {
+        while (self.curr.type != .TOK_RBRACE) {
+            switch (self.curr.type) {
                 .TOK_STRING => {
-                    try steps.append(allocator, .{ .cmd = value.* });
+                    try steps.append(allocator, .{ .cmd = self.curr.value });
                 },
                 .TOK_DIRECTIVE => {
-                    const directive = Directive.parse(value.*);
+                    const directive = Directive.parse(self.curr.value);
 
                     switch (directive) {
                         .parallel, .sequential => |d| try steps.append(allocator, .{ .directive = d }),
                         .@"if" => {
                             // TODO
-                            logger.out(.warning, "@if is work in progress", .{});
                             try steps.append(allocator, .{ .if_block = try self.parse_if_block() });
                             continue;
                         },
-                        else => return self.syntax_error("directive '@{s}' is invalid inside a rule", .{ value.* }),
+                        else => return self.syntaxError("directive '@{s}' is invalid inside a rule", .{ self.curr.value }),
                     }
                 },
                 .TOK_EOF => {
-                    return self.syntax_error("expected '}}' got EOF", .{});
+                    return self.syntaxError("expected '}}' got EOF", .{});
                 },
-                else => return self.syntax_error("unexpected token inside rule declaration: '{s}': '{s}'", .{@tagName(type_.*), value.*}),
+                else => return self.syntaxError("unexpected token inside rule declaration: '{s}': '{s}'", .{@tagName(self.curr.type), self.curr.value}),
             }
-            try self.next_token();
+            try self.nextToken();
         }
-        try self.next_token();
+        try self.nextToken();
         
         return try steps.toOwnedSlice(allocator);
     }
 
-    fn parse_if_block(self: *Parser) !IfBlock {
+    fn parse_if_block(self: *Parser) anyerror!IfBlock {
         // skip @if
-        try self.next_token();
+        try self.nextToken();
         try self.expect(.TOK_IDENT);
 
         const left = self.curr.value;
-        try self.next_token();
+        try self.nextToken();
 
-        var op: bool = undefined;
-        switch (self.curr.type) {
-            .TOK_DEQ => op = true,
-            .TOK_NOEQ => op = false,
-            else => return self.syntax_error("expected '==' or '!=' got '{s}'", .{self.curr.value})
-        }
+        const op: condition.Operator = switch (self.curr.type) {
+            .TOK_DEQ => .eq,
+            .TOK_NEQ => .neq,
+            else => return self.syntaxError("expected '==' or '!=' got '{s}'", .{self.curr.value})
+        };
 
-        try self.next_token();
-        try self.expect2(.TOK_IDENT, .TOK_STRING);
+        try self.nextToken();
+        try self.expectEither(.TOK_IDENT, .TOK_STRING);
 
         const right = self.curr.value;
+        const right_is_string = switch (self.curr.type) {
+            .TOK_IDENT => false,
+            .TOK_STRING => true,
+            else => unreachable,
+        };
 
-        try self.next_token();
+        try self.nextToken();
         try self.expect(.TOK_LBRACE);
-
-        logger.out(.debug, "{s} {s} {s}", .{left, if (op) "==" else "!=", right});
 
         return .{
             .condition = .{
                 .left = left,
-                .op = if (op) .eq else .noeq,
+                .op = op,
                 .right = right,
+                .right_is_string = right_is_string,
             },
-            .steps = try self.parse_block(),
+            .steps = try self.parseRule(),
         };
     }
 
-    fn next_token(self: *Parser) !void {
+    fn nextToken(self: *Parser) !void {
         while (true) {
             self.curr = try self.lexer.next();
             switch (self.curr.type) {
@@ -252,21 +208,21 @@ pub const Parser = struct {
         }
     }
 
-    fn syntax_error(self: *Parser, comptime fmt: []const u8, args: anytype) error{SyntaxError} {
-        logger.out_adv(true, .syntax, self.lexer.curr_line, fmt, args);
+    inline fn syntaxError(self: *Parser, comptime fmt: []const u8, args: anytype) error{SyntaxError} {
+        logger.outAdv(true, .syntax, self.lexer.curr_line, fmt, args);
         return error.SyntaxError;
     }
 
     fn expect(self: *Parser, t: lexer.TokenType) !void {
         if (self.curr.type != t) {
-            logger.out_adv(true, .syntax, self.lexer.curr_line, "expected '{s}' got '{s}'", .{ @tagName(t), @tagName(self.curr.type) });
+            logger.outAdv(true, .syntax, self.lexer.curr_line, "expected '{s}' got '{s}'", .{ @tagName(t), @tagName(self.curr.type) });
             return error.SyntaxError;
         }
     } 
 
-    fn expect2(self: *Parser, t1: lexer.TokenType, t2: lexer.TokenType) !void {
+    fn expectEither(self: *Parser, t1: lexer.TokenType, t2: lexer.TokenType) !void {
         if (self.curr.type != t1 and self.curr.type != t2) {
-            logger.out_adv(true, .syntax, self.lexer.curr_line, "expected '{s}' or '{s}' got '{s}'", .{ @tagName(t1), @tagName(t2), @tagName(self.curr.type) });
+            logger.outAdv(true, .syntax, self.lexer.curr_line, "expected '{s}' or '{s}' got '{s}'", .{ @tagName(t1), @tagName(t2), @tagName(self.curr.type) });
             return error.SyntaxError;
         }
     }

@@ -13,15 +13,23 @@ clean {
 
 @default
 debug {
-  "zig build-exe $FILES -femit-bin=$OUT-d $DEBUG_FLAGS"
+    @if OS == "windows" {
+        "zig build-exe $FILES -femit-bin=$OUT-d.exe $DEBUG_FLAGS"
+    }
+
+    @if OS == "linux" {
+        "zig build-exe $FILES -femit-bin=$OUT-d $DEBUG_FLAGS"
+    }
 }
 
 release {
-  "zig build-exe $FILES -femit-bin=$OUT $RELEASE_FLAGS"
-}
+    @if OS == "windows" {
+        "zig build-exe $FILES -femit-bin=$OUT.exe $RELEASE_FLAGS"
+    }
 
-linux {
-	"zig build-exe $FILES -femit-bin=$OUT $RELEASE_FLAGS -target x86_64-linux"
+    @if OS == "linux" {
+        "zig build-exe $FILES -femit-bin=$OUT $RELEASE_FLAGS"
+    }
 }
 
 install {
@@ -31,8 +39,7 @@ install {
 }
 
 test {
-  @if os == "linux" {
-    'echo "os == linux"'
-  }
-  'echo "hello world"'
+    @if OS == "windows" {
+        'echo "if statement true"'
+    }
 }

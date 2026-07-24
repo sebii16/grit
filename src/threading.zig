@@ -6,7 +6,7 @@ const globals = @import("globals.zig");
 
 var cmd_failed: std.atomic.Value(bool) = .init(false);
 
-pub fn run_commands(items: []const []const u8, config: *const runner.Config) !void {
+pub fn runCommands(items: []const []const u8, config: *const runner.Config) !void {
     if (items.len == 0) return;
 
     const gpa = globals.init.gpa;
@@ -41,7 +41,7 @@ pub fn run_commands(items: []const []const u8, config: *const runner.Config) !vo
     }
 
     if (cmd_failed.load(.monotonic)) {
-	logger.out_adv(false, .info, null, "\n", .{});
+	logger.outAdv(false, .info, null, "\n", .{});
         logger.out(if (config.ignore_errors) .warning else .err, "one or more commands failed{s}", .{if (config.ignore_errors) "" else ". stopping"});
 
         if (!config.ignore_errors)
@@ -53,11 +53,11 @@ fn worker(cmd: []const u8, needs_lock: bool) void {
     const gpa = globals.init.gpa;
 
     if (needs_lock)
-        logger.out_locked(.info, "{s}", .{cmd})
+        logger.outLocked(.info, "{s}", .{cmd})
     else
         logger.out(.info, "{s}", .{cmd});
 
-    const res = create_process(cmd) catch {
+    const res = createProcess(cmd) catch {
         cmd_failed.store(true, .monotonic);
         return;
     };
@@ -82,7 +82,7 @@ fn worker(cmd: []const u8, needs_lock: bool) void {
     std.Io.File.stdout().writeStreamingAll(globals.init.io, output) catch return;
 }
 
-fn create_process(cmd: []const u8) !std.process.RunResult {
+fn createProcess(cmd: []const u8) !std.process.RunResult {
     const gpa = globals.init.gpa;
 
     const args = if (builtin.target.os.tag == .windows)

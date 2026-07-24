@@ -5,34 +5,54 @@ const c = @cImport({
 const globals = @import("globals.zig");
 const builtin = @import("builtin");
 
-pub fn get_variables(variable: []const u8) ?[]const u8 {
-    if (!std.mem.startsWith(u8, variable, "builtin_"))
-        return null;
+const BuiltinVariable = struct {
+    name: []const u8,
+    value: ?[]const u8
+};
 
-    return switch (std.meta.stringToEnum(enum { date, time, os, arch }, variable[8..]) orelse return null) {
-        .date, .time => |t| get_date_time(@intFromEnum(t)),
-        .os => @tagName(builtin.os.tag),
-        .arch => @tagName(builtin.cpu.arch),
-    };
+pub const builtin_variables = [_]BuiltinVariable{
+    .{ .name = "OS", .value = @tagName(builtin.os.tag) },
+    .{ .name = "ARCH", .value = @tagName(builtin.cpu.arch) },
+    .{ .name = "TIME", .value = null }, 
+    .{ .name = "DATE", .value = null },
+};
+
+const RuntimeVariable = enum {
+    DATE,
+    TIME,
+};
+
+pub fn getBuiltinVariable(variable: []const u8) ?[]const u8 {
+    for (builtin_variables) |v| {
+        if (!std.mem.eql(u8, v.name, variable))
+            continue;
+
+        if (v.value) |value| 
+            return value;
+
+        const runtime_var = std.meta.stringToEnum(RuntimeVariable, v.name) orelse return null;
+
+        return getRuntimeVariable(runtime_var);
+    }
+    return null;
 }
 
-fn get_date_time(date_type: u8) ?[]const u8 {
+fn getRuntimeVariable(variable_type: RuntimeVariable) ?[]const u8 {
     var time: c.time_t = c.time(null);
     const tm = c.localtime(&time) orelse return null;
     var buf: [10]u8 = undefined;
 
-    const res = switch (date_type) {
-        0 => std.fmt.bufPrint(&buf, "{d:0>2}.{d:0>2}.{d:0>2}", .{
+    const res = switch (variable_type) {
+        .DATE => std.fmt.bufPrint(&buf, "{d:0>2}.{d:0>2}.{d:0>2}", .{
             @as(u32, @intCast(tm.*.tm_mday)),
             @as(u32, @intCast(tm.*.tm_mon + 1)),
             @as(u32, @intCast(tm.*.tm_year + 1900)),
         }) catch return null,
 
-        1 => std.fmt.bufPrint(&buf, "{d:0>2}:{d:0>2}", .{
+        .TIME => std.fmt.bufPrint(&buf, "{d:0>2}:{d:0>2}", .{
             @as(u32, @intCast(tm.*.tm_hour)),
             @as(u32, @intCast(tm.*.tm_min)),
         }) catch return null,
-        else => unreachable
     };
 
     return globals.init.arena.allocator().dupe(u8, res) catch null;

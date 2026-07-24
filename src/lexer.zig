@@ -7,7 +7,7 @@ pub const TokenType = enum {
     TOK_NL,
     TOK_EQ,
     TOK_DEQ,
-    TOK_NOEQ,
+    TOK_NEQ,
     TOK_LBRACE,
     TOK_RBRACE,
     TOK_COMMENT,
@@ -35,46 +35,46 @@ pub const Lexer = struct {
         while (true) {
             self.start_index = self.index;
 
-            const c = advance(self) orelse {
-                return make_token(.TOK_EOF, self);
+            const c = self.advance() orelse {
+                return self.makeToken(.TOK_EOF);
             };
 
             switch (c) {
                 '\n' => {
                     self.curr_line += 1;
-                    return make_token(.TOK_NL, self);
+                    return self.makeToken(.TOK_NL);
                 },
                 ' ', '\t', '\r' => continue,
                 '=' => {
-                    if (advance(self) != '=') {
+                    if (self.advance() != '=') {
                         self.index -= 1;
-                        return make_token(.TOK_EQ, self);
+                        return self.makeToken(.TOK_EQ);
                     }
-                    return make_token(.TOK_DEQ, self);
+                    return self.makeToken(.TOK_DEQ);
                 },
                 '!' => {
-                    if (advance(self) != '=') {
+                    if (self.advance() != '=') {
                         self.index -= 1;
                         continue;
                     }
-                    return make_token(.TOK_NOEQ, self);
+                    return self.makeToken(.TOK_NEQ);
                 },
-                '{' => return make_token(.TOK_LBRACE, self),
-                '}' => return make_token(.TOK_RBRACE, self),
-                '@' => return self.make_directive_token(),
+                '{' => return self.makeToken(.TOK_LBRACE),
+                '}' => return self.makeToken(.TOK_RBRACE),
+                '@' => return self.makeDirectiveToken(),
                 '#' => {
-                    handle_comments(self);
+                    self.handleComments();
                     continue;
                 },
-                '(' => return make_token(.TOK_LPAREN, self),
-                ')' => return make_token(.TOK_RPAREN, self),
-                ',' => return make_token(.TOK_COMMA, self),
-                '\'', '"' => return handle_strings(self),
+                '(' => return self.makeToken(.TOK_LPAREN),
+                ')' => return self.makeToken(.TOK_RPAREN),
+                ',' => return self.makeToken(.TOK_COMMA),
+                '\'', '"' => return self.handleStrings(),
                 else => {
                     if (std.ascii.isAlphanumeric(c) or c == '_') {
-                        return make_ident_token(self);
+                        return self.makeIdentToken();
                     } else {
-                        logger.out_adv(true, .syntax, self.curr_line, "unexpected {s}", .{if (c > 127) "non-ASCII character" else "character '" ++ [_]u8{c} ++ "'"});
+                        logger.outAdv(true, .syntax, self.curr_line, "unexpected {s}", .{if (c > 127) "non-ASCII character" else "character '" ++ [_]u8{c} ++ "'"});
                         return error.UnexpectedCharacter;
                     }
                 },
@@ -82,64 +82,66 @@ pub const Lexer = struct {
         }
     }
 
-    fn make_directive_token(self: *Lexer) !Token {
+    fn scanIdentifier(self: *Lexer) void {
+        while (self.advance()) |c| {
+            if (!std.ascii.isAlphanumeric(c) and c != '_') {
+                self.index -= 1;
+                break;
+            }
+        }
+    }
+
+    fn makeToken(self: *Lexer, tt: TokenType) Token {
+        return Token{ .type = tt, .value = self.src[self.start_index..self.index] };
+    }
+    
+    fn makeIdentToken(self: *Lexer) Token {
+        self.scanIdentifier();
+
+        return self.makeToken(.TOK_IDENT);
+    }
+
+    fn makeDirectiveToken(self: *Lexer) !Token {
         self.start_index += 1;
+        self.scanIdentifier();
 
-        _ = make_ident_token(self);
+        return self.makeToken(.TOK_DIRECTIVE);
+    }
 
-        return make_token(.TOK_DIRECTIVE, self);
+    fn advance(self: *Lexer) ?u8 {
+        if (self.index >= self.src.len) return null;
+        defer self.index += 1;
+
+        return self.src[self.index];
+    }
+
+    fn handleComments(self: *Lexer) void {
+        while (self.advance()) |c| {
+            if (c == '\n') {
+                self.index -= 1;
+                break;
+            }
+        }
+    }
+    
+    fn handleStrings(self: *Lexer) !Token {
+        const q = self.src[self.start_index]; // get which kind of quote opened the string (' or ")
+
+        self.start_index += 1; // make the string start after the opening quote
+
+        while (self.advance()) |c| {
+            if (c == '\n') break;
+
+            if (c == q) {
+                self.index -= 1; // move back inside the string so closing quote wont be included
+
+                defer self.index += 1; // move past the closing quote again
+
+                return self.makeToken(.TOK_STRING);
+            }
+        }
+
+        logger.outAdv(true, .syntax, self.curr_line, "unterminated string", .{});
+        return error.UnterminatedString;
     }
 };
-
-fn advance(lx: *Lexer) ?u8 {
-    if (lx.index >= lx.src.len) return null;
-    defer lx.index += 1;
-
-    return lx.src[lx.index];
-}
-
-fn make_token(tt: TokenType, lx: *Lexer) Token {
-    return Token{ .type = tt, .value = lx.src[lx.start_index..lx.index] };
-}
-
-fn handle_comments(lx: *Lexer) void {
-    while (advance(lx)) |c| {
-        if (c == '\n') {
-            lx.index -= 1;
-            break;
-        }
-    }
-}
-
-fn handle_strings(lx: *Lexer) !Token {
-    const q = lx.src[lx.start_index]; // get which kind of quote opened the string (' or ")
-
-    lx.start_index += 1; // make the string start after the opening quote
-
-    while (advance(lx)) |c| {
-        if (c == '\n') break;
-
-        if (c == q) {
-            lx.index -= 1; // move back inside the string so closing quote wont be included
-
-            defer lx.index += 1; // move past the closing quote again
-
-            return make_token(.TOK_STRING, lx);
-        }
-    }
-
-    logger.out_adv(true, .syntax, lx.curr_line, "unterminated string", .{});
-    return error.UnterminatedString;
-}
-
-fn make_ident_token(lx: *Lexer) Token {
-    while (advance(lx)) |c| {
-        if (!std.ascii.isAlphanumeric(c) and c != '_') {
-            lx.index -= 1;
-            break;
-        }
-    }
-
-    return make_token(.TOK_IDENT, lx);
-}
-

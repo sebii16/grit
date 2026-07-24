@@ -50,18 +50,18 @@ pub const Colors = struct {
 };
 
 pub fn out(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
-    out_adv(true, level, null, fmt, args);
+    outAdv(true, level, null, fmt, args);
 }
 
 pub var log_mutex: std.Io.Mutex = .init;
 
-pub fn out_locked(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+pub fn outLocked(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
     log_mutex.lock(globals.init.io) catch return;
     defer log_mutex.unlock(globals.init.io);
     out(level, fmt, args);
 }
 
-pub fn out_adv(nl: bool, level: LogLevel, line: ?usize, comptime fmt: []const u8, args: anytype) void {
+pub fn outAdv(nl: bool, level: LogLevel, line: ?usize, comptime fmt: []const u8, args: anytype) void {
     if ((level == .debug and builtin.mode != .Debug) or !Config.current.is_inited) return;
 
     var stdout_writer = std.Io.File.stdout().writer(globals.init.io, &.{});
