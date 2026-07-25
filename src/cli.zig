@@ -49,17 +49,13 @@ pub fn parseArgs() !ParsedArgs {
             }
         }
 
-        if (cmp(arg, "--dry") or cmp(arg, "-d")) {
+        if (cmp(arg, "--dry-run") or cmp(arg, "-d")) {
             res.config.dry_run = true;
         } else if (cmp(arg, "--no-expand")) {
             res.config.no_expand = true;
         } else if (cmp(arg, "--file") or cmp(arg, "-f")) {
             res.config.build_file = getValue(&i, args) catch |e| {
                 return cliError(e, "please specify a file after '{s}'", .{arg});
-            };
-        } else if (cmp(arg, "--rule") or cmp(arg, "-r")) {
-            res.config.rule_name = getValue(&i, args) catch |e| {
-                return cliError(e, "please specify a rule name after '{s}'", .{arg});
             };
         } else if (cmp(arg, "--threads") or cmp(arg, "-t")) {
             const value = getValue(&i, args) catch |e| {

@@ -78,7 +78,7 @@ pub const Vars = struct {
             switch (node) {
                 .VarDecl => |v| {
                     if (self.map.contains(v.name)) {
-                        logger.out(.syntax, "variable {s}'{s}'{s} redefined", .{color.get(color.bold), v.name, color.get(color.reset)});
+                        logger.out(.debug, "ERROR: variable {s}'{s}'{s} redefined THIS IS A BUG AND SHOULD NEVER HAPPEN", .{color.get(color.bold), v.name, color.get(color.reset)});
                         return error.DuplicateVar;
                     }
 
@@ -148,7 +148,6 @@ pub const Vars = struct {
 };
 
 fn reportBadVariable(full_input: []const u8, rule_name: []const u8, start: usize, end: usize, err: anyerror) anyerror {
-    logger.out(.err, "{s}", .{@errorName(err)});
     logger.out(.syntax, "undefined or invalid variable in rule {s}'{s}'{s}:\n", .{ color.get(color.bold), rule_name, color.get(color.reset) });
 
     logger.out(.info, "{s}", .{full_input});

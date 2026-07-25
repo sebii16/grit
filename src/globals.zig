@@ -8,7 +8,7 @@ pub var init: std.process.Init = undefined;
 
 pub const default_build_file = "build.grit";
 
-pub const ver = "0.6.1";
+pub const ver = "0.6.2";
 
 pub const ver_msg =
     "grit " ++ ver ++  " (" ++ os ++ " " ++ arch ++ ")" ++ if (builtin.mode == .Debug) " [Debug build]" else "" ++
@@ -26,15 +26,15 @@ pub const help_msg =
     \\If no rule is specified, grit executes the default rule (marked with @default).
     \\
     \\Build flags:
-    \\  -d, --dry       Print commands without executing them.
-    \\  -f, --file      Specify the build file (default = build.grit).
-    \\  -r, --rule      Specify the build rule.
-    \\  -t, --threads   Specify the max. amount of threads (default = CPU core count).
-    \\  --ignore-errors Ignore execution errors.
-    \\  --no-colors     Disable colors.
-    \\  --no-expand     Disable variable expansion.
+    \\  -d, --dry-run       Print commands without executing them.
+    \\  -f, --file FILE     Build file to use (default: build.grit).
+    //\\  -r, --rule RULE     Build rule to execute.
+    \\  -t, --threads N     Max. number of threads (default: CPU core count).
+    \\      --ignore-errors Continue executing after a command fails.
+    \\      --no-colors     Disable colored output.
+    \\      --no-expand     Disable variable expansion.
     \\
     \\Global flags: 
-    \\  -h, --help      Print help message.
-    \\  -v, --version   Print version and license information.
+    \\  -h, --help          Show this help message.
+    \\  -v, --version       Show version and license information.
     ;

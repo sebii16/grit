@@ -2,6 +2,5 @@ grit
 grit-d
 *.exe
 *.pdb
-src/cache.zig
-src/functions.zig
 *.lnk
+commands.zig

@@ -47,11 +47,18 @@ pub const Parser = struct {
     curr: lexer.Token = .{ .value = &[_]u8{}, .type = .TOK__INVALID },
     default_rule: ?[]const u8 = null,
     pending_default: bool = false,
+    rule_names: std.StringHashMapUnmanaged(usize) = .{},
+    variable_names: std.StringHashMapUnmanaged(usize) = .{},
 
     pub fn parseAll(self: *Parser) ![]Ast {
+        defer {
+            self.rule_names.deinit(globals.init.gpa);
+            self.variable_names.deinit(globals.init.gpa);
+            logger.out(.debug, "cleanup rule and variable hashmaps", .{});
+        }
+
         const allocator = globals.init.arena.allocator();
         var nodes: std.ArrayList(Ast) = .empty;
-
         try self.nextToken();
 
         while (self.curr.type != .TOK_EOF) {
@@ -59,7 +66,7 @@ pub const Parser = struct {
                 const directive = Directive.parse(self.curr.value);
 
                 if (directive == .invalid) 
-                    return self.syntaxError("directive '@{s}' is invalid or doesn't exist", .{ self.curr.value });
+                    return self.syntaxError("directive '@{s}' doesn't exist", .{ self.curr.value });
 
                 if (directive != .default)
                     return self.syntaxError("directive '@{s}' is invalid at top level", .{ self.curr.value });
@@ -82,6 +89,26 @@ pub const Parser = struct {
         return nodes.toOwnedSlice(allocator);
     }
 
+    fn checkDuplicate(self: *@This(), allocator: std.mem.Allocator, name: []const u8, decl_type: enum {variable, rule}) !void {
+        const res = try (switch (decl_type) {
+            .variable => &self.variable_names,
+            .rule => &self.rule_names,
+        }).getOrPut(allocator, name);
+
+        if (res.found_existing) {
+            logger.outAdv(
+                true,
+                .syntax,
+                self.lexer.curr_line,
+                "{s} {s}'{s}'{s} redefined: first definition on line {d}",
+                .{@tagName(decl_type), logger.Colors.get(logger.Colors.bold), name, logger.Colors.get(logger.Colors.reset), res.value_ptr.*}
+            );
+            return error.DuplicateDeclaration;
+        }
+
+        res.value_ptr.* = self.lexer.curr_line;
+    }
+
     fn parseDecl(self: *Parser) !Ast {
         if (self.curr.type != .TOK_IDENT)
             return self.syntaxError("expected declaration, got '{s}'", .{ @tagName(self.curr.type) });
@@ -92,6 +119,8 @@ pub const Parser = struct {
         switch (self.curr.type) {
             .TOK_EQ => {
                 // Variable
+                try self.checkDuplicate(globals.init.gpa, name, .variable);
+
                 if (self.pending_default)
                     return self.syntaxError("@default must be followed by a rule declaration", .{});
 
@@ -110,6 +139,8 @@ pub const Parser = struct {
             },
             .TOK_LBRACE => {
                 // Rule
+                try self.checkDuplicate(globals.init.gpa, name, .rule);
+
                 if (self.pending_default) {
                     self.default_rule = name;
                     self.pending_default = false;

@@ -19,19 +19,19 @@ pub const Config = struct {
 };
 
 pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser.Parser) !void {
-    const rule = config.rule_name orelse prs.default_rule orelse {
+    const rule_name = config.rule_name orelse prs.default_rule orelse {
         logger.out(.err, "no build rule selected", .{});
         return error.InvalidRule;
     };
 
     for (ast) |node| {
         switch (node) {
-            .RuleDecl => |r| {
-                if (!std.mem.eql(u8, r.name, rule)) continue;
+            .RuleDecl => |rule| {
+                if (!std.mem.eql(u8, rule.name, rule_name)) continue;
 
                 var has_cmd = false;
 
-                for (r.steps) |*step| {
+                for (rule.steps) |*step| {
                     switch (step.*) {
                         .cmd => {
                             has_cmd = true;
@@ -58,7 +58,7 @@ pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser
                 if (!has_cmd) {
                     logger.out(.info, "nothing to do for build rule {s}'{s}'{s}", .{
                         color.get(color.bold),
-                        r.name,
+                        rule.name,
                         color.get(color.reset)
                     });
                     return;
@@ -66,7 +66,7 @@ pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser
 
                 logger.out(.info, "executing build rule {s}'{s}'{s}{s}{s}{s}", .{
                     color.get(color.bold),
-                    rule,
+                    rule_name,
                     color.get(color.reset),
                     if (config.no_expand) " [no-expand]" else "",
                     if (config.dry_run) " [dry-run]" else "",
@@ -76,7 +76,7 @@ pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser
                 const vars = try variables.Vars.init(globals.init.arena.allocator(), globals.init.io, ast);
                 var batch: std.ArrayList([]const u8) = .empty;
 
-                try runSteps(r.steps, config, &vars, &batch, rule);
+                try runSteps(rule.steps, config, &vars, &batch, rule_name);
 
                 if (batch.items.len > 0) {
                     try threading.runCommands(batch.items, config);
@@ -88,7 +88,7 @@ pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser
         }
     }
 
-    logger.out(.err, "build rule {s}'{s}'{s} doesn't exist.", .{color.get(color.bold), rule, color.get(color.reset)});
+    logger.out(.err, "build rule {s}'{s}'{s} doesn't exist.", .{color.get(color.bold), rule_name, color.get(color.reset)});
     return error.InvalidRule;
 }
 

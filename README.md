@@ -127,17 +127,16 @@ grit release -t 4
 
 ```text
 Build flags:
--d, --dry       Print commands without executing them.
--f, --file      Specify the build file.
--r, --rule      Specify the build rule.
--t, --threads   Specify the max. amount of threads (default = CPU core count)
---ignore-errors Ignore execution errors.
---no-colors     Disable colors.
---no-expand     Disable variable expansion.
+  -d, --dry-run       Print commands without executing them.
+  -f, --file FILE     Build file to use (default: build.grit).
+  -t, --threads N     Max. number of threads (default: CPU core count).
+      --ignore-errors Continue executing after a command fails.
+      --no-colors     Disable colored output.
+      --no-expand     Disable variable expansion.
 
-Global flags: 
--h, --help      Show help message.
--v, --version   Show version and license information.
+Global flags:
+  -h, --help          Show this help message.
+  -v, --version       Show version and license information.
 ```
 
 ## Built-in Variables
