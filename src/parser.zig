@@ -3,7 +3,6 @@ const lexer = @import("lexer.zig");
 const globals = @import("globals.zig");
 const logger = @import("logger.zig");
 const condition = @import("condition.zig");
-const builtins = @import("builtins.zig");
 
 const Var = struct {
     name: []const u8,
@@ -38,7 +37,6 @@ const Rule = struct {
     steps: []Step,
 };
 
-
 pub const Ast = union(enum) {
     VarDecl: Var,
     RuleDecl: Rule,
@@ -60,8 +58,11 @@ pub const Parser = struct {
             if (self.curr.type == .TOK_DIRECTIVE) {
                 const directive = Directive.parse(self.curr.value);
 
+                if (directive == .invalid) 
+                    return self.syntaxError("directive '@{s}' is invalid or doesn't exist", .{ self.curr.value });
+
                 if (directive != .default)
-                    return self.syntaxError("directive '{s}' is invalid at top level", .{ self.curr.value });
+                    return self.syntaxError("directive '@{s}' is invalid at top level", .{ self.curr.value });
 
                 if (self.default_rule != null or self.pending_default) 
                     return self.syntaxError("@default can only be called once", .{});
@@ -127,22 +128,25 @@ pub const Parser = struct {
 
     fn parseRule(self: *Parser) ![]Step {
         try self.nextToken();
-        var steps: std.ArrayList(Step) = .empty;
+        const temp_allocator = globals.init.gpa;
         const allocator = globals.init.arena.allocator();
+
+        var steps: std.ArrayList(Step) = .empty;
+        defer steps.deinit(temp_allocator);
 
         while (self.curr.type != .TOK_RBRACE) {
             switch (self.curr.type) {
                 .TOK_STRING => {
-                    try steps.append(allocator, .{ .cmd = self.curr.value });
+                    try steps.append(temp_allocator, .{ .cmd = self.curr.value });
                 },
                 .TOK_DIRECTIVE => {
                     const directive = Directive.parse(self.curr.value);
 
                     switch (directive) {
-                        .parallel, .sequential => |d| try steps.append(allocator, .{ .directive = d }),
+                        .parallel, .sequential => |d| try steps.append(temp_allocator, .{ .directive = d }),
                         .@"if" => {
                             // TODO
-                            try steps.append(allocator, .{ .if_block = try self.parse_if_block() });
+                            try steps.append(temp_allocator, .{ .if_block = try self.parse_if_block() });
                             continue;
                         },
                         else => return self.syntaxError("directive '@{s}' is invalid inside a rule", .{ self.curr.value }),
@@ -156,8 +160,11 @@ pub const Parser = struct {
             try self.nextToken();
         }
         try self.nextToken();
+
+        if (steps.items.len == 0)
+            return &.{};
         
-        return try steps.toOwnedSlice(allocator);
+        return try allocator.dupe(Step, steps.items);
     }
 
     fn parse_if_block(self: *Parser) anyerror!IfBlock {
@@ -193,6 +200,7 @@ pub const Parser = struct {
                 .op = op,
                 .right = right,
                 .right_is_string = right_is_string,
+                .is_met = false,
             },
             .steps = try self.parseRule(),
         };

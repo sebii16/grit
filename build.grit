@@ -4,11 +4,11 @@ DEBUG_FLAGS = "-O Debug -freference-trace=10 -lc"
 RELEASE_FLAGS = "-O ReleaseFast -fstrip -lc"
 
 clean {
-  @parallel
-  "rm -f *.exe"
-  "rm -f *.pdb"
-  "rm -f $OUT"
-  "rm -f $OUT-d"
+    @parallel
+    "rm -f *.exe"
+    "rm -f *.pdb"
+    "rm -f $OUT"
+    "rm -f $OUT-d"
 }
 
 @default

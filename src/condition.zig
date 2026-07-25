@@ -1,5 +1,5 @@
 const std = @import("std");
-const builtins = @import("builtins.zig");
+const variables = @import("variables.zig");
 const logger = @import("logger.zig");
 
 pub const Operator = enum {
@@ -12,9 +12,10 @@ pub const Condition = struct {
     op: Operator,
     right: []const u8,
     right_is_string: bool,
+    is_met: bool,
 
-    pub fn isMet(self: *const Condition) bool { 
-        for (builtins.builtin_variables) |v| {
+    pub fn evaluate(self: *const Condition) bool { 
+        for (variables.builtin_variables) |v| {
             if (!std.mem.eql(u8, v.name, self.left))
                 continue;
 

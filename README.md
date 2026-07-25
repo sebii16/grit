@@ -151,7 +151,7 @@ These variables are automatically available in every build file. They are reserv
 | `TIME`         | Current time                                                         |
 | `DATE`         | Current date                                                         |
 | `CWD`          | Current working directory                                            |
-| `GRIT_VER`     | Current version of grit                                              |
+| `GRIT_VER`     | Your version of grit                                              |
 
 ## License
 

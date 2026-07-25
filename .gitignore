@@ -4,3 +4,4 @@ grit-d
 *.pdb
 src/cache.zig
 src/functions.zig
+*.lnk
