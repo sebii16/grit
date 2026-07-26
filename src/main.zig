@@ -7,11 +7,15 @@ const logger = @import("logger.zig");
 const globals = @import("globals.zig");
 
 pub fn main(init: std.process.Init) u8 {
-    globals.init = init;
+    const arena = init.arena.allocator();
+    const gpa = init.gpa;
+    const io = init.io;
 
-    logger.init();
+    globals.init(arena, gpa, io);
 
-    var args = cli.parseArgs() catch return 1;
+    logger.init(io, init.environ_map);
+
+    var args = cli.parseArgs(arena, init.minimal.args) catch return 1;
 
     logger.Config.current.build_file = args.config.build_file;
 
@@ -27,19 +31,19 @@ pub fn main(init: std.process.Init) u8 {
             logger.out(.info, "{s}", .{ globals.ver_msg });
         },
         .Run => {  
-            const src = readFile(args.config.build_file) catch return 1;
-            var parser = p.Parser{ .lexer = .{ .src = src }};
+            const src = readFile(arena, io, args.config.build_file) catch return 1;
+            var parser = p.Parser.init(arena, gpa, src);
             const ast = parser.parseAll() catch return 1;
             
-            runner.runBuildRule(ast, &args.config, &parser) catch return 1;
+            runner.runBuildRule(arena, io, ast, &args.config, &parser) catch return 1;
         },
     }
 
     return 0;
 }
 
-fn readFile(path: []const u8) ![]const u8 {
-    return std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), globals.init.io, path, globals.init.arena.allocator(), .unlimited) catch |e| {
+fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]const u8 {
+    return std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), io, path, allocator, .unlimited) catch |e| {
         logger.out(.err, "failed to read '{s}'", .{path});
         return e;
     };

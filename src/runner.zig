@@ -1,8 +1,6 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 const logger = @import("logger.zig");
-const cli = @import("cli.zig");
-const builtin = @import("builtin");
 const globals = @import("globals.zig");
 const threading = @import("threading.zig");
 const variables = @import("variables.zig");
@@ -18,7 +16,7 @@ pub const Config = struct {
     ignore_errors: bool = false,
 };
 
-pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser.Parser) !void {
+pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parser.Ast, config: *Config, prs: *const parser.Parser) !void {
     const rule_name = config.rule_name orelse prs.default_rule orelse {
         logger.out(.err, "no build rule selected", .{});
         return error.InvalidRule;
@@ -73,13 +71,13 @@ pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser
                     if (config.ignore_errors) " [ignore-errors]" else ""
                 });
 
-                const vars = try variables.Vars.init(globals.init.arena.allocator(), globals.init.io, ast);
+                const vars = try variables.Vars.init(allocator, io, ast);
                 var batch: std.ArrayList([]const u8) = .empty;
 
-                try runSteps(rule.steps, config, &vars, &batch, rule_name);
+                try runSteps(allocator, rule.steps, config, &vars, &batch, rule_name);
 
                 if (batch.items.len > 0) {
-                    try threading.runCommands(batch.items, config);
+                    try threading.runCommands(globals.gpa, batch.items, config);
                 }
 
                 return;
@@ -92,14 +90,14 @@ pub fn runBuildRule(ast: []const parser.Ast, config: *Config, prs: *const parser
     return error.InvalidRule;
 }
 
-fn runSteps(steps: []parser.Step, config: *Config, vars: *const variables.Vars, batch: *std.ArrayList([]const u8), rule: []const u8) !void {
+fn runSteps(allocator: std.mem.Allocator, steps: []parser.Step, config: *Config, vars: *const variables.Vars, batch: *std.ArrayList([]const u8), rule: []const u8) !void {
     for (steps) |step| {
         switch (step) {
             .directive => |d| {
                 switch (d) {
                     .sequential => {
                         if (config.parallel and batch.items.len > 0) {
-                            try threading.runCommands(batch.items, config);
+                            try threading.runCommands(globals.gpa, batch.items, config);
                             batch.clearRetainingCapacity();
                         }
                         config.parallel = false;
@@ -114,13 +112,13 @@ fn runSteps(steps: []parser.Step, config: *Config, vars: *const variables.Vars, 
                 const expanded = if (!config.no_expand) try vars.expand(cmd, rule) else cmd;
 
                 if (config.parallel)
-                    try batch.append(globals.init.arena.allocator(), expanded)
+                    try batch.append(allocator, expanded)
                 else 
-                    try threading.runCommands(&.{expanded}, config);
+                    try threading.runCommands(globals.gpa, &.{expanded}, config);
             },
             .if_block => |block| {
                 if (block.condition.is_met)
-                    try runSteps(block.steps, config, vars, batch, rule);
+                    try runSteps(allocator, block.steps, config, vars, batch, rule);
             },
         }
     }

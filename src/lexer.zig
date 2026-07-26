@@ -1,6 +1,5 @@
 const std = @import("std");
 const logger = @import("logger.zig");
-const globals = @import("globals.zig");
 
 pub const TokenType = enum {
     TOK_EOF,

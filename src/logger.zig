@@ -19,16 +19,16 @@ pub const Config = struct {
     build_file: []const u8 = "",
 };
 
-pub fn init() void {
+pub fn init(io: std.Io, env: *std.process.Environ.Map) void {
     if (Config.current.is_inited) return;
 
     const stdout = std.Io.File.stdout();
-    const is_tty = stdout.isTty(globals.init.io) catch false;
-    const is_dumb = globals.init.environ_map.get("DUMB");
+    const is_tty = stdout.isTty(io) catch false;
+    const is_dumb = env.get("DUMB");
 
     const ansi = if (is_tty and builtin.os.tag == .windows) br: {        
-        std.Io.File.stdout().enableAnsiEscapeCodes(globals.init.io) catch {};
-        break :br stdout.supportsAnsiEscapeCodes(globals.init.io) catch false;
+        std.Io.File.stdout().enableAnsiEscapeCodes(io) catch {};
+        break :br stdout.supportsAnsiEscapeCodes(io) catch false;
     } else is_tty and (is_dumb == null or !std.mem.eql(u8, is_dumb.?, "dumb"));
 
     Config.current = .{
@@ -55,17 +55,17 @@ pub fn out(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
 
 pub var log_mutex: std.Io.Mutex = .init;
 
-pub fn outLocked(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
-    log_mutex.lock(globals.init.io) catch return;
-    defer log_mutex.unlock(globals.init.io);
+pub fn outLocked(io: std.Io, level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+    log_mutex.lock(io) catch return;
+    defer log_mutex.unlock(io);
     out(level, fmt, args);
 }
 
 pub fn outAdv(nl: bool, level: LogLevel, line: ?usize, comptime fmt: []const u8, args: anytype) void {
     if ((level == .debug and builtin.mode != .Debug) or !Config.current.is_inited) return;
 
-    var stdout_writer = std.Io.File.stdout().writer(globals.init.io, &.{});
-    var stderr_writer = std.Io.File.stderr().writer(globals.init.io, &.{});
+    var stdout_writer = std.Io.File.stdout().writer(globals.io, &.{});
+    var stderr_writer = std.Io.File.stderr().writer(globals.io, &.{});
 
     var output = if (level == .err or level == .warning)
         &stderr_writer.interface

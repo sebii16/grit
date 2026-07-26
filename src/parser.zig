@@ -1,6 +1,5 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
-const globals = @import("globals.zig");
 const logger = @import("logger.zig");
 const condition = @import("condition.zig");
 
@@ -47,17 +46,28 @@ pub const Parser = struct {
     curr: lexer.Token = .{ .value = &[_]u8{}, .type = .TOK__INVALID },
     default_rule: ?[]const u8 = null,
     pending_default: bool = false,
-    rule_names: std.StringHashMapUnmanaged(usize) = .{},
-    variable_names: std.StringHashMapUnmanaged(usize) = .{},
+    rule_names: std.StringHashMap(usize),
+    variable_names: std.StringHashMap(usize),
+    allocator: std.mem.Allocator, 
+    temp_allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, gpa: std.mem.Allocator, lexer_src: []const u8) @This() {
+        return .{
+            .lexer = .{ .src = lexer_src },
+            .rule_names = .init(gpa),
+            .variable_names = .init(gpa),
+            .allocator = allocator,
+            .temp_allocator = gpa,
+        };
+    }
 
     pub fn parseAll(self: *Parser) ![]Ast {
         defer {
-            self.rule_names.deinit(globals.init.gpa);
-            self.variable_names.deinit(globals.init.gpa);
+            self.rule_names.deinit();
+            self.variable_names.deinit();
             logger.out(.debug, "cleanup rule and variable hashmaps", .{});
         }
 
-        const allocator = globals.init.arena.allocator();
         var nodes: std.ArrayList(Ast) = .empty;
         try self.nextToken();
 
@@ -80,20 +90,20 @@ pub const Parser = struct {
             }
 
             const node = try self.parseDecl();
-            try nodes.append(allocator, node);
+            try nodes.append(self.allocator, node);
         }
 
         if (self.pending_default)
             return self.syntaxError("no rule found after @default", .{});
 
-        return nodes.toOwnedSlice(allocator);
+        return nodes.toOwnedSlice(self.allocator);
     }
 
-    fn checkDuplicate(self: *@This(), allocator: std.mem.Allocator, name: []const u8, decl_type: enum {variable, rule}) !void {
+    fn checkDuplicate(self: *@This(), name: []const u8, decl_type: enum {variable, rule}) !void {
         const res = try (switch (decl_type) {
             .variable => &self.variable_names,
             .rule => &self.rule_names,
-        }).getOrPut(allocator, name);
+        }).getOrPut(name);
 
         if (res.found_existing) {
             logger.outAdv(
@@ -119,7 +129,7 @@ pub const Parser = struct {
         switch (self.curr.type) {
             .TOK_EQ => {
                 // Variable
-                try self.checkDuplicate(globals.init.gpa, name, .variable);
+                try self.checkDuplicate(name, .variable);
 
                 if (self.pending_default)
                     return self.syntaxError("@default must be followed by a rule declaration", .{});
@@ -139,7 +149,7 @@ pub const Parser = struct {
             },
             .TOK_LBRACE => {
                 // Rule
-                try self.checkDuplicate(globals.init.gpa, name, .rule);
+                try self.checkDuplicate(name, .rule);
 
                 if (self.pending_default) {
                     self.default_rule = name;
@@ -159,25 +169,23 @@ pub const Parser = struct {
 
     fn parseRule(self: *Parser) ![]Step {
         try self.nextToken();
-        const temp_allocator = globals.init.gpa;
-        const allocator = globals.init.arena.allocator();
 
         var steps: std.ArrayList(Step) = .empty;
-        defer steps.deinit(temp_allocator);
+        defer steps.deinit(self.temp_allocator);
 
         while (self.curr.type != .TOK_RBRACE) {
             switch (self.curr.type) {
                 .TOK_STRING => {
-                    try steps.append(temp_allocator, .{ .cmd = self.curr.value });
+                    try steps.append(self.temp_allocator, .{ .cmd = self.curr.value });
                 },
                 .TOK_DIRECTIVE => {
                     const directive = Directive.parse(self.curr.value);
 
                     switch (directive) {
-                        .parallel, .sequential => |d| try steps.append(temp_allocator, .{ .directive = d }),
+                        .parallel, .sequential => |d| try steps.append(self.temp_allocator, .{ .directive = d }),
                         .@"if" => {
                             // TODO
-                            try steps.append(temp_allocator, .{ .if_block = try self.parse_if_block() });
+                            try steps.append(self.temp_allocator, .{ .if_block = try self.parse_if_block() });
                             continue;
                         },
                         else => return self.syntaxError("directive '@{s}' is invalid inside a rule", .{ self.curr.value }),
@@ -195,7 +203,7 @@ pub const Parser = struct {
         if (steps.items.len == 0)
             return &.{};
         
-        return try allocator.dupe(Step, steps.items);
+        return try self.allocator.dupe(Step, steps.items);
     }
 
     fn parse_if_block(self: *Parser) anyerror!IfBlock {

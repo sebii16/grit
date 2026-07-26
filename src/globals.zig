@@ -1,10 +1,17 @@
 const std = @import("std");
-const logger = @import("logger.zig");
 const builtin = @import("builtin");
 const os = @tagName(builtin.target.os.tag);
 const arch = @tagName(builtin.target.cpu.arch);
 
-pub var init: std.process.Init = undefined;
+pub var arena: std.mem.Allocator = undefined;
+pub var gpa: std.mem.Allocator = undefined;
+pub var io: std.Io = undefined;
+
+pub fn init(arena_: std.mem.Allocator, gpa_: std.mem.Allocator, io_: std.Io) void {
+    arena = arena_;
+    gpa = gpa_;
+    io = io_;
+}
 
 pub const default_build_file = "build.grit";
 

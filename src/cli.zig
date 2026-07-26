@@ -1,7 +1,5 @@
 const std = @import("std");
-const globals = @import("globals.zig");
 const logger = @import("logger.zig");
-const builtin = @import("builtin");
 const runner = @import("runner.zig");
 
 pub const Actions = enum {
@@ -15,56 +13,46 @@ pub const ParsedArgs = struct {
     action: Actions = .Run,
 };
 
-pub fn parseArgs() !ParsedArgs {
+pub fn parseArgs(allocator: std.mem.Allocator, args_: std.process.Args) !ParsedArgs {
     var res = ParsedArgs{};
 
-    const args = try globals.init.minimal.args.toSlice(globals.init.arena.allocator());
+    const args = try args_.toSlice(allocator);
 
-    for (args, 0..) |a, i| {
-        logger.out(.debug, "argv[{d}]={s}", .{i, a});
-    } 
+    // skip executable
+    var i: usize = 1;
 
-    var i: usize = 1; // skip exe name
-
-    if (i + 1 > args.len) return res;
+    if (i >= args.len) return res;
 
     if (args[i][0] != '-') {
-        defer i += 1;
         res.config.rule_name = args[i];
+        i += 1;
     }
 
     while (i < args.len) : (i += 1) {
         const arg = args[i];
 
-        if (arg.len < 2 or arg[0] != '-')
-            return cliError(error.InvalidFlag, "invalid flag '{s}'", .{arg});
+        if (arg.len < 2 or arg[0] != '-') 
+            return cliError("invalid flag '{s}'", .{arg});
 
         if (res.config.rule_name == null) {
-            if (cmp(arg, "--help") or cmp(arg, "-h")) {
+            if (cmp2(arg, "--help", "-h")) {
                 res.action = .Help;
                 return res;
-            } else if (cmp(arg, "--version") or cmp(arg, "-v")) {
+            } else if (cmp2(arg, "--version", "-v")) {
                 res.action = .Version;
                 return res;
             }
         }
 
-        if (cmp(arg, "--dry-run") or cmp(arg, "-d")) {
+        if (cmp2(arg, "--dry-run", "-d")) {
             res.config.dry_run = true;
         } else if (cmp(arg, "--no-expand")) {
             res.config.no_expand = true;
-        } else if (cmp(arg, "--file") or cmp(arg, "-f")) {
-            res.config.build_file = getValue(&i, args) catch |e| {
-                return cliError(e, "please specify a file after '{s}'", .{arg});
-            };
-        } else if (cmp(arg, "--threads") or cmp(arg, "-t")) {
-            const value = getValue(&i, args) catch |e| {
-                return cliError(e, "please specify a number after '{s}'", .{arg});
-            };
-
-            const thread_count = std.fmt.parseInt(usize, value, 10) catch |e| {
-                return cliError(e, "'{s}' is not a valid number", .{value});
-            };
+        } else if (cmp2(arg, "--file", "-f")) {
+            res.config.build_file = getValue(&i, args) catch return cliError("must specify a file after '{s}'", .{arg});
+        } else if (cmp2(arg, "--threads", "-t")) {
+            const value = getValue(&i, args) catch return cliError("must specify a number after '{s}'", .{arg});
+            const thread_count = std.fmt.parseInt(usize, value, 10) catch return cliError("'{s}' is not a valid number", .{value});
 
             if (thread_count == 0) {
                 logger.out(.warning, "thread count of 0 ignored, using default", .{});
@@ -74,24 +62,28 @@ pub fn parseArgs() !ParsedArgs {
             res.config.ignore_errors = true;
         } else if (cmp(arg, "--no-colors")) {
             logger.Config.current.colors_enabled = false;
-        } else return cliError(error.InvalidFlag, "invalid flag '{s}'", .{arg});
+        } else return cliError("invalid flag '{s}'", .{arg});
     }
 
     return res;
+}
+
+inline fn cmp2(haystack: []const u8, needle1: []const u8, needle2: []const u8) bool {
+    return std.mem.eql(u8, haystack, needle1) or std.mem.eql(u8, haystack, needle2);
 }
 
 inline fn cmp(first: []const u8, second: []const u8) bool {
     return std.mem.eql(u8, first, second);
 }
 
-fn getValue(pos: *usize, args: []const [:0]const u8) ![:0]const u8 {
+fn getValue(pos: *usize, args: []const []const u8) ![]const u8 {
     if (pos.* + 1 >= args.len) return error.FlagMissingValue;
 
     pos.* += 1;
     return args[pos.*];
 }
 
-inline fn cliError(err: anyerror, comptime fmt: []const u8, args: anytype) anyerror {
+inline fn cliError(comptime fmt: []const u8, args: anytype) error{CliError} {
     logger.out(.err, fmt, args);
-    return err;
+    return error.CliError;
 }

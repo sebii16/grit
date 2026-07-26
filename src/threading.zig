@@ -6,10 +6,8 @@ const globals = @import("globals.zig");
 
 var cmd_failed: std.atomic.Value(bool) = .init(false);
 
-pub fn runCommands(items: []const []const u8, config: *const runner.Config) !void {
+pub fn runCommands(gpa: std.mem.Allocator, items: []const []const u8, config: *const runner.Config) !void {
     if (items.len == 0) return;
-
-    const gpa = globals.init.gpa;
 
     if (config.dry_run) {
         for (items) |item| {
@@ -30,7 +28,7 @@ pub fn runCommands(items: []const []const u8, config: *const runner.Config) !voi
         const batch_size = @min(thread_count, items.len - index);
 
         for (0..batch_size) |i| {
-            threads[i] = try std.Thread.spawn(.{}, worker, .{items[index + i], batch_size > 1});
+            threads[i] = try std.Thread.spawn(.{}, worker, .{gpa, globals.io, items[index + i], batch_size > 1});
         }
 
         for (0..batch_size) |i| {
@@ -49,15 +47,13 @@ pub fn runCommands(items: []const []const u8, config: *const runner.Config) !voi
     }
 }
 
-fn worker(cmd: []const u8, needs_lock: bool) void {
-    const gpa = globals.init.gpa;
-
+fn worker(gpa: std.mem.Allocator, io: std.Io, cmd: []const u8, needs_lock: bool) void {
     if (needs_lock)
-        logger.outLocked(.info, "{s}", .{cmd})
+        logger.outLocked(io, .info, "{s}", .{cmd})
     else
         logger.out(.info, "{s}", .{cmd});
 
-    const res = createProcess(cmd) catch {
+    const res = createProcess(gpa, io, cmd) catch {
         cmd_failed.store(true, .monotonic);
         return;
     };
@@ -76,19 +72,17 @@ fn worker(cmd: []const u8, needs_lock: bool) void {
     defer gpa.free(output);
 
     if (needs_lock) {
-        logger.log_mutex.lock(globals.init.io) catch return;
+        logger.log_mutex.lock(io) catch return;
     }
-    defer if (needs_lock) logger.log_mutex.unlock(globals.init.io);
-    std.Io.File.stdout().writeStreamingAll(globals.init.io, output) catch return;
+    defer if (needs_lock) logger.log_mutex.unlock(io);
+    std.Io.File.stdout().writeStreamingAll(io, output) catch return;
 }
 
-fn createProcess(cmd: []const u8) !std.process.RunResult {
-    const gpa = globals.init.gpa;
-
+fn createProcess(gpa: std.mem.Allocator, io: std.Io, cmd: []const u8) !std.process.RunResult {
     const args = if (builtin.target.os.tag == .windows)
         [_][]const u8{ "cmd.exe", "/C", cmd }
     else
         [_][]const u8{ "sh", "-c", cmd };
 
-    return try std.process.run(gpa, globals.init.io, .{ .argv = &args });
+    return try std.process.run(gpa, io, .{ .argv = &args });
 }
