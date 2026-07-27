@@ -15,7 +15,7 @@ pub const Condition = struct {
 
     pub fn isMet(self: *const Condition) bool { 
         for (variables.builtin_variables) |v| {
-            if (!std.mem.eql(u8, v.name, self.left))
+            if (!std.mem.eql(u8, v.name, self.left) or v.value == null)
                 continue;
 
             return switch (self.op) {
@@ -24,7 +24,7 @@ pub const Condition = struct {
             };
         }
 
-        logger.out(.warning, "{s} is undefined and if statement is therefore always false", .{self.left});
+        logger.out(.warning, "'{s}' is undefined - skipping if block", .{self.left});
 
         return false;
     }
