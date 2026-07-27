@@ -23,14 +23,14 @@ pub const builtin_variables = [_]BuiltinVariable{
     .{ .name = "GRIT_VER", .value = globals.ver },
 };
 
-const RuntimeVariable = enum {
+pub const RuntimeVariable = enum {
     TIME,
     DATE,
     CWD,
 
-    fn getBuiltinRuntimeVariable(self: @This(), io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn getBuiltinRuntimeVariable(self: @This(), io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
         if (self == .CWD) 
-            return try std.process.currentPathAlloc(io, allocator);
+            return std.process.currentPathAlloc(io, allocator);
 
         var time: c.time_t = c.time(null);
         const tm = c.localtime(&time) orelse return error.TimeConversionFailed;
@@ -51,7 +51,7 @@ const RuntimeVariable = enum {
             .CWD => unreachable,
         };
 
-        return try allocator.dupe(u8, res);
+        return allocator.dupe(u8, res);
     }
 };
 

@@ -36,7 +36,7 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
                             break;
                         },
                         .if_block => |block| {
-                            if (block.condition.isMet()) {
+                            if (block.condition.isMet(io, globals.gpa)) {
                                 for (block.steps) |bs| {
                                     switch (bs) {
                                         .cmd => {
@@ -116,7 +116,7 @@ fn runSteps(allocator: std.mem.Allocator, steps: []parser.Step, config: *Config,
                     try threading.runCommands(globals.gpa, &.{expanded}, config);
             },
             .if_block => |block| {
-                if (block.condition.isMet())
+                if (block.condition.isMet(globals.io, globals.gpa))
                     try runSteps(allocator, block.steps, config, vars, batch, rule);
             },
         }
