@@ -29,15 +29,14 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
 
                 var has_cmd = false;
 
-                for (rule.steps) |*step| {
-                    switch (step.*) {
+                for (rule.steps) |step| {
+                    switch (step) {
                         .cmd => {
                             has_cmd = true;
                             break;
                         },
-                        .if_block => |*block| {
-                            if (block.condition.evaluate()) {
-                                block.*.condition.is_met = true;
+                        .if_block => |block| {
+                            if (block.condition.isMet()) {
                                 for (block.steps) |bs| {
                                     switch (bs) {
                                         .cmd => {
@@ -117,7 +116,7 @@ fn runSteps(allocator: std.mem.Allocator, steps: []parser.Step, config: *Config,
                     try threading.runCommands(globals.gpa, &.{expanded}, config);
             },
             .if_block => |block| {
-                if (block.condition.is_met)
+                if (block.condition.isMet())
                     try runSteps(allocator, block.steps, config, vars, batch, rule);
             },
         }

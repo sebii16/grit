@@ -3,11 +3,6 @@ const lexer = @import("lexer.zig");
 const logger = @import("logger.zig");
 const condition = @import("condition.zig");
 
-const Var = struct {
-    name: []const u8,
-    value: []const u8,
-};
-
 pub const Directive = enum {
     invalid,
     default,
@@ -28,7 +23,12 @@ const IfBlock = struct {
 pub const Step = union(enum) {
     cmd: []const u8,
     directive: Directive,
-    if_block: IfBlock,
+    if_block: *IfBlock,
+};
+
+const Var = struct {
+    name: []const u8,
+    value: []const u8,
 };
 
 const Rule = struct {
@@ -184,7 +184,6 @@ pub const Parser = struct {
                     switch (directive) {
                         .parallel, .sequential => |d| try steps.append(self.temp_allocator, .{ .directive = d }),
                         .@"if" => {
-                            // TODO
                             try steps.append(self.temp_allocator, .{ .if_block = try self.parse_if_block() });
                             continue;
                         },
@@ -203,10 +202,10 @@ pub const Parser = struct {
         if (steps.items.len == 0)
             return &.{};
         
-        return try self.allocator.dupe(Step, steps.items);
+        return self.allocator.dupe(Step, steps.items);
     }
 
-    fn parse_if_block(self: *Parser) anyerror!IfBlock {
+    fn parse_if_block(self: *Parser) anyerror!*IfBlock {
         // skip @if
         try self.nextToken();
         try self.expect(.TOK_IDENT);
@@ -233,16 +232,18 @@ pub const Parser = struct {
         try self.nextToken();
         try self.expect(.TOK_LBRACE);
 
-        return .{
+        const if_block = try self.allocator.create(IfBlock);
+        if_block.* = .{
             .condition = .{
                 .left = left,
                 .op = op,
                 .right = right,
                 .right_is_string = right_is_string,
-                .is_met = false,
             },
             .steps = try self.parseRule(),
         };
+
+        return if_block;
     }
 
     fn nextToken(self: *Parser) !void {
