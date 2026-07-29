@@ -15,7 +15,7 @@ pub fn init(arena_: std.mem.Allocator, gpa_: std.mem.Allocator, io_: std.Io) voi
 
 pub const default_build_file = "build.grit";
 
-pub const ver = "0.6.2";
+pub const ver = "0.6.3";
 
 pub const ver_msg =
     "grit " ++ ver ++  " (" ++ os ++ " " ++ arch ++ ")" ++ if (builtin.mode == .Debug) " [Debug build]" else "" ++

@@ -4,9 +4,13 @@ const logger = @import("logger.zig");
 pub const TokenType = enum {
     TOK_EOF,
     TOK_NL,
+    TOK_ASSIGN,
     TOK_EQ,
-    TOK_DEQ,
     TOK_NEQ,
+    TOK_GT,
+    TOK_LT,
+    TOK_LTE,
+    TOK_GTE,
     TOK_LBRACE,
     TOK_RBRACE,
     TOK_COMMENT,
@@ -16,6 +20,7 @@ pub const TokenType = enum {
     TOK_LPAREN,
     TOK_RPAREN,
     TOK_COMMA,
+    TOK_EXCL,
     TOK__INVALID
 };
 
@@ -34,9 +39,7 @@ pub const Lexer = struct {
         while (true) {
             self.start_index = self.index;
 
-            const c = self.advance() orelse {
-                return self.makeToken(.TOK_EOF);
-            };
+            const c = self.peekAdvance() orelse return self.makeToken(.TOK_EOF);
 
             switch (c) {
                 '\n' => {
@@ -44,20 +47,7 @@ pub const Lexer = struct {
                     return self.makeToken(.TOK_NL);
                 },
                 ' ', '\t', '\r' => continue,
-                '=' => {
-                    if (self.advance() != '=') {
-                        self.index -= 1;
-                        return self.makeToken(.TOK_EQ);
-                    }
-                    return self.makeToken(.TOK_DEQ);
-                },
-                '!' => {
-                    if (self.advance() != '=') {
-                        self.index -= 1;
-                        continue;
-                    }
-                    return self.makeToken(.TOK_NEQ);
-                },
+                '<', '>', '=', '!' => return self.makeOperatorToken(),
                 '{' => return self.makeToken(.TOK_LBRACE),
                 '}' => return self.makeToken(.TOK_RBRACE),
                 '@' => return self.makeDirectiveToken(),
@@ -81,10 +71,37 @@ pub const Lexer = struct {
         }
     }
 
-    fn scanIdentifier(self: *Lexer) void {
-        while (self.advance()) |c| {
+    fn makeOperatorToken(self: *Lexer) Token {
+        const token_type: TokenType = blk: switch (self.peekPrev()) {
+            '<' => if (self.peekAdvance() == '=') .TOK_LTE else { self.index -= 1; break :blk .TOK_LT; },
+            '>' => if (self.peekAdvance() == '=') .TOK_GTE else { self.index -= 1; break :blk .TOK_GT; },
+            '=' => if (self.peekAdvance() == '=') .TOK_EQ else { self.index -= 1; break :blk .TOK_ASSIGN; },
+            '!' => if (self.peekAdvance() == '=') .TOK_NEQ else { self.index -= 1; break :blk .TOK_EXCL; },
+            else => unreachable,
+        };
+
+        return self.makeToken(token_type);
+    }
+
+    fn peekAdvance(self: *Lexer) ?u8 {
+        if (self.index >= self.src.len) return null;
+        defer self.index += 1; // advance after returning the current character 
+
+        return self.peek();
+    }
+
+    fn peekPrev(self: *Lexer) u8 {
+        return self.src[self.index - 1];
+    }
+
+    fn peek(self: *Lexer) u8 {
+        return self.src[self.index];
+    }
+
+    fn nextIdentifier(self: *Lexer) void {
+        while (self.peekAdvance()) |c| {
             if (!std.ascii.isAlphanumeric(c) and c != '_') {
-                self.index -= 1;
+                self.index -= 1; // go back to the last valid character
                 break;
             }
         }
@@ -95,29 +112,22 @@ pub const Lexer = struct {
     }
     
     fn makeIdentToken(self: *Lexer) Token {
-        self.scanIdentifier();
+        self.nextIdentifier();
 
         return self.makeToken(.TOK_IDENT);
     }
 
     fn makeDirectiveToken(self: *Lexer) !Token {
-        self.start_index += 1;
-        self.scanIdentifier();
+        self.start_index += 1; // start after @
+        self.nextIdentifier();
 
         return self.makeToken(.TOK_DIRECTIVE);
     }
 
-    fn advance(self: *Lexer) ?u8 {
-        if (self.index >= self.src.len) return null;
-        defer self.index += 1;
-
-        return self.src[self.index];
-    }
-
     fn handleComments(self: *Lexer) void {
-        while (self.advance()) |c| {
+        while (self.peekAdvance()) |c| {
             if (c == '\n') {
-                self.index -= 1;
+                self.index -= 1; // dont include the new line
                 break;
             }
         }
@@ -126,15 +136,15 @@ pub const Lexer = struct {
     fn handleStrings(self: *Lexer) !Token {
         const q = self.src[self.start_index]; // get which kind of quote opened the string (' or ")
 
-        self.start_index += 1; // make the string start after the opening quote
+        self.start_index += 1; // start after the opening quote
 
-        while (self.advance()) |c| {
+        while (self.peekAdvance()) |c| {
             if (c == '\n') break;
 
             if (c == q) {
-                self.index -= 1; // move back inside the string so closing quote wont be included
+                self.index -= 1; // end before the closing quote
 
-                defer self.index += 1; // move past the closing quote again
+                defer self.index += 1; // move past the closing quote after returning
 
                 return self.makeToken(.TOK_STRING);
             }

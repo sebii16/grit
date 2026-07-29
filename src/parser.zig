@@ -127,7 +127,7 @@ pub const Parser = struct {
         try self.nextToken();
 
         switch (self.curr.type) {
-            .TOK_EQ => {
+            .TOK_ASSIGN => {
                 // Variable
                 try self.checkDuplicate(name, .variable);
 
@@ -214,20 +214,24 @@ pub const Parser = struct {
         try self.nextToken();
 
         const op: condition.Operator = switch (self.curr.type) {
-            .TOK_DEQ => .eq,
+            .TOK_EQ => .eq,
             .TOK_NEQ => .neq,
-            else => return self.syntaxError("expected '==' or '!=' got '{s}'", .{self.curr.value})
+            .TOK_LT => .lt,
+            .TOK_LTE => .lte,
+            .TOK_GT => .gt,
+            .TOK_GTE => .gte,
+            else => return self.syntaxError("expected comparision operator got '{s}'({s})", .{@tagName(self.curr.type), self.curr.value})
         };
 
         try self.nextToken();
         try self.expectEither(.TOK_IDENT, .TOK_STRING);
 
         const right = self.curr.value;
-        const right_is_string = switch (self.curr.type) {
-            .TOK_IDENT => false,
-            .TOK_STRING => true,
-            else => unreachable,
-        };
+        //const right_is_string = switch (self.curr.type) {
+          //  .TOK_IDENT => false,
+            //.TOK_STRING => true,
+            //else => unreachable,
+        //};
 
         try self.nextToken();
         try self.expect(.TOK_LBRACE);
@@ -238,7 +242,7 @@ pub const Parser = struct {
                 .left = left,
                 .op = op,
                 .right = right,
-                .right_is_string = right_is_string,
+                //.right_is_string = right_is_string,
             },
             .steps = try self.parseRule(),
         };

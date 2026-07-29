@@ -9,53 +9,69 @@ const c = @cImport({
 
 const color = logger.Colors;
 
-const BuiltinVariable = struct {
-    name: []const u8,
-    value: ?[]const u8
-};
+pub const Value = union(enum) {
+    string: []const u8,
+    version: std.SemanticVersion,
+    bool_: bool,
 
-pub const builtin_variables = [_]BuiltinVariable{
-    .{ .name = "OS", .value = @tagName(builtin.os.tag) },
-    .{ .name = "ARCH", .value = @tagName(builtin.cpu.arch) },
-    .{ .name = "TIME", .value = null }, 
-    .{ .name = "DATE", .value = null },
-    .{ .name = "CWD", .value = null },
-    .{ .name = "GRIT_VER", .value = globals.ver },
-};
-
-pub const RuntimeVariable = enum {
-    TIME,
-    DATE,
-    CWD,
-
-    pub fn getBuiltinRuntimeVariable(self: @This(), io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
-        if (self == .CWD) 
-            return std.process.currentPathAlloc(io, allocator);
-
-        var time: c.time_t = c.time(null);
-        const tm = c.localtime(&time) orelse return error.TimeConversionFailed;
-        var buf: [10]u8 = undefined;
-
-        const res = switch (self) {
-            .DATE => try std.fmt.bufPrint(&buf, "{d:0>2}.{d:0>2}.{d:0>2}", .{
-                @as(u32, @intCast(tm.*.tm_mday)),
-                @as(u32, @intCast(tm.*.tm_mon + 1)),
-                @as(u32, @intCast(tm.*.tm_year + 1900)),
-            }),
-
-            .TIME => try std.fmt.bufPrint(&buf, "{d:0>2}:{d:0>2}", .{
-                @as(u32, @intCast(tm.*.tm_hour)),
-                @as(u32, @intCast(tm.*.tm_min)),
-            }),
-
-            .CWD => unreachable,
+    pub fn asString(self: @This(), buf: []u8) ![]const u8 {
+        return switch (self) {
+            .string => |s| s,
+            .version => |v| std.fmt.bufPrint(buf, "{d}.{d}.{d}", .{v.major, v.minor, v.patch}),
+            .bool_ => |b| std.fmt.bufPrint(buf, "{}", .{b}),
         };
-
-        return allocator.dupe(u8, res);
     }
 };
 
-pub const VarMap = std.StringHashMap(?[]const u8);
+const Builtin = struct {
+    name: []const u8,
+    value: ?Value,
+};
+
+pub const builtin_variables = [_]Builtin{
+    .{ .name = "OS", .value = .{ .string = @tagName(builtin.os.tag) } },
+    .{ .name = "ARCH", .value = .{ .string = @tagName(builtin.cpu.arch) } },
+    .{ .name = "TIME", .value = null }, 
+    .{ .name = "DATE", .value = null },
+    .{ .name = "CWD", .value = null },
+    .{
+        .name = "GRIT_VER",
+        .value = .{ .version = std.SemanticVersion.parse(globals.ver) catch @compileError("wrong version format") }, 
+    },
+};
+
+pub fn getRuntimeVariable(name: []const u8, io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
+    const type_ = std.meta.stringToEnum(enum{TIME, DATE, CWD}, name) orelse return error.UnknownVariable;
+    if (type_ == .CWD) {
+        var buf: [@field(std.os, @tagName(builtin.target.os.tag)).PATH_MAX]u8 = undefined;
+        logger.out(.debug, "PATH_MAX: {}", .{@sizeOf(@TypeOf(buf))});
+        const len = try std.process.currentPath(io, &buf);
+        return try allocator.dupe(u8, buf[0..len]);
+    }
+
+    var time: c.time_t = c.time(null);
+    const tm = c.localtime(&time) orelse return error.TimeConversionFailed;
+    var buf: [10]u8 = undefined;
+
+    const res = switch (type_) {
+        .DATE => try std.fmt.bufPrint(&buf, "{d:0>2}.{d:0>2}.{d:0>2}", .{
+            @as(u32, @intCast(tm.*.tm_mday)),
+            @as(u32, @intCast(tm.*.tm_mon + 1)),
+            @as(u32, @intCast(tm.*.tm_year + 1900)),
+        }),
+
+        .TIME => try std.fmt.bufPrint(&buf, "{d:0>2}:{d:0>2}", .{
+            @as(u32, @intCast(tm.*.tm_hour)),
+            @as(u32, @intCast(tm.*.tm_min)),
+        }),
+
+        .CWD => unreachable,
+    };
+
+    return allocator.dupe(u8, res);
+}
+
+pub const VarMap = std.StringHashMap(?Value);
 
 pub const Vars = struct {
     map: VarMap,
@@ -72,7 +88,8 @@ pub const Vars = struct {
         // disabled because we use an arena allocator right now
         //errdefer self.map.deinit();
 
-        inline for (builtin_variables) |v| try self.map.put(v.name, v.value);
+        inline for (builtin_variables) |v|
+            try self.map.put(v.name, v.value);
 
         for (ast) |node| {
             switch (node) {
@@ -82,7 +99,7 @@ pub const Vars = struct {
                         return error.DuplicateVar;
                     }
 
-                    try self.map.put(v.name, v.value);
+                    try self.map.put(v.name, .{ .string = v.value });
                 },
                 else => {},
             }
@@ -124,7 +141,19 @@ pub const Vars = struct {
                 const value = self.getVariable(var_name) catch |err| 
                     return reportBadVariable(input, rule_name, start, end, err);
 
-                try expanded.appendSlice(self.allocator, value);
+                const value_string: []const u8 = blk: switch (value) {
+                    .string => |s| s,
+                    .version => {
+                        var buf: [10]u8 = undefined;
+                        break :blk try value.asString(&buf);
+                    },
+                    .bool_ => {
+                        var buf: [5]u8 = undefined;
+                        break :blk try value.asString(&buf);
+                    }
+                };
+
+                try expanded.appendSlice(self.allocator, value_string);
 
                 i = end - 1;
                 continue;
@@ -135,15 +164,14 @@ pub const Vars = struct {
         return try expanded.toOwnedSlice(self.allocator);
     }
 
-    pub fn getVariable(self: *const @This(), name: []const u8) ![]const u8 {
+    pub fn getVariable(self: *const @This(), name: []const u8) !Value {
         const value = self.map.get(name) orelse return error.InvalidVariable;
 
         if (value) |res| {
-            logger.out(.debug, "found variable: {s}", .{res});
             return res;
         }
 
-        return (std.meta.stringToEnum(RuntimeVariable, name) orelse return error.BuiltinVariableInternal).getBuiltinRuntimeVariable(self.io, self.allocator);
+        return .{ .string = try getRuntimeVariable(name, globals.io, globals.arena) };
     }
 };
 
