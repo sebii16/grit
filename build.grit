@@ -44,7 +44,4 @@ install {
 }
 
 test {
-    @if GRIT_VER >= "0.6.3" {
-        "echo $GRIT_VER >= 0.6.3"
-    }
 }

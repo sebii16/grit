@@ -15,10 +15,16 @@ pub fn init(arena_: std.mem.Allocator, gpa_: std.mem.Allocator, io_: std.Io) voi
 
 pub const default_build_file = "build.grit";
 
-pub const ver = "0.6.3";
+pub const ver = std.SemanticVersion{
+    .major = 0,
+    .minor = 6,
+    .patch = 4
+};
+
+pub const ver_str = std.fmt.comptimePrint("{d}.{d}.{d}", .{ ver.major, ver.minor, ver.patch });
 
 pub const ver_msg =
-    "grit " ++ ver ++  " (" ++ os ++ " " ++ arch ++ ")" ++ if (builtin.mode == .Debug) " [Debug build]" else "" ++
+    "grit " ++ ver_str ++  " (" ++ os ++ " " ++ arch ++ ")" ++ (if (builtin.mode == .Debug) " [Debug build]" else "") ++
     \\
     \\Copyright (c) 2026 sebii16
     \\Licensed under the MIT License - see LICENSE for more info.

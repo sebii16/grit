@@ -61,7 +61,7 @@ pub fn parseArgs(allocator: std.mem.Allocator, args_: std.process.Args) !ParsedA
         } else if (cmp(arg, "--ignore-errors")) {
             res.config.ignore_errors = true;
         } else if (cmp(arg, "--no-colors")) {
-            logger.Config.current.colors_enabled = false;
+            logger.Config.current.colors = false;
         } else return cliError("invalid flag '{s}'", .{arg});
     }
 

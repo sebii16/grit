@@ -3,22 +3,21 @@ const builtin = @import("builtin");
 const parser = @import("parser.zig");
 const globals = @import("globals.zig");
 const logger = @import("logger.zig");
+const colors = @import("colors.zig");
 const c = @cImport({
     @cInclude("time.h");
 });
 
-const color = logger.Colors;
-
 pub const Value = union(enum) {
     string: []const u8,
     version: std.SemanticVersion,
-    bool_: bool,
+    boolean: bool,
 
     pub fn asString(self: @This(), buf: []u8) ![]const u8 {
         return switch (self) {
             .string => |s| s,
             .version => |v| std.fmt.bufPrint(buf, "{d}.{d}.{d}", .{v.major, v.minor, v.patch}),
-            .bool_ => |b| std.fmt.bufPrint(buf, "{}", .{b}),
+            .boolean => |b| std.fmt.bufPrint(buf, "{}", .{b}),
         };
     }
 };
@@ -34,10 +33,7 @@ pub const builtin_variables = [_]Builtin{
     .{ .name = "TIME", .value = null }, 
     .{ .name = "DATE", .value = null },
     .{ .name = "CWD", .value = null },
-    .{
-        .name = "GRIT_VER",
-        .value = .{ .version = std.SemanticVersion.parse(globals.ver) catch @compileError("wrong version format") }, 
-    },
+    .{ .name = "GRIT_VER", .value = .{ .version = globals.ver }, },
 };
 
 pub fn getRuntimeVariable(name: []const u8, io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
@@ -95,8 +91,8 @@ pub const Vars = struct {
             switch (node) {
                 .VarDecl => |v| {
                     if (self.map.contains(v.name)) {
-                        logger.out(.debug, "ERROR: variable {s}'{s}'{s} redefined THIS IS A BUG AND SHOULD NEVER HAPPEN", .{color.get(color.bold), v.name, color.get(color.reset)});
-                        return error.DuplicateVar;
+                        // this error shouldn't be able to happen because parser avoids it
+                        logger.out(.debug, "ERROR: variable '{s}' redefined THIS IS A BUG AND SHOULD NEVER HAPPEN HERE", .{v.name});
                     }
 
                     try self.map.put(v.name, .{ .string = v.value });
@@ -147,7 +143,7 @@ pub const Vars = struct {
                         var buf: [10]u8 = undefined;
                         break :blk try value.asString(&buf);
                     },
-                    .bool_ => {
+                    .boolean => {
                         var buf: [5]u8 = undefined;
                         break :blk try value.asString(&buf);
                     }
@@ -176,7 +172,7 @@ pub const Vars = struct {
 };
 
 fn reportBadVariable(full_input: []const u8, rule_name: []const u8, start: usize, end: usize, err: anyerror) anyerror {
-    logger.out(.syntax, "undefined or invalid variable in rule {s}'{s}'{s}:\n", .{ color.get(color.bold), rule_name, color.get(color.reset) });
+    logger.out(.syntax, "undefined or invalid variable in rule {s}'{s}'{s}:\n", .{ colors.get(.bold), rule_name, colors.get(.reset) });
 
     logger.out(.info, "{s}", .{full_input});
 
@@ -185,9 +181,9 @@ fn reportBadVariable(full_input: []const u8, rule_name: []const u8, start: usize
     }
 
     logger.out(.info, "{s}^{s}{s}", .{
-        color.get(color.red),
+        colors.get(.red),
         ([_]u8{'~'} ** 128)[0..@min(end - start, 128)],
-        color.get(color.reset) 
+        colors.get(.reset) 
     });
 
     return err;

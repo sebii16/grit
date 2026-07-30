@@ -30,8 +30,14 @@ pub fn main(init: std.process.Init) u8 {
         .Version => {
             logger.out(.info, "{s}", .{ globals.ver_msg });
         },
-        .Run => {  
-            const src = readFile(arena, io, args.config.build_file) catch return 1;
+        .Run => {
+            const src = readFile(arena, io, args.config.build_file) catch blk: {
+                if (@import("builtin").mode == .Debug) {
+                    logger.out(.debug, "using test.grit", .{});
+                    break :blk readFile(arena, io, "test.grit") catch return 1;
+                }
+                return 1;
+            };
             var parser = p.Parser.init(arena, gpa, src);
             const ast = parser.parseAll() catch return 1;
             

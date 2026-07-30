@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const globals = @import("globals.zig");
+const colors = @import("colors.zig");
 
 pub const LogLevel = enum {
     info,
@@ -15,7 +16,7 @@ pub const Config = struct {
     
     is_inited: bool = false,
 
-    colors_enabled: bool = false,
+    colors: bool = false,
     build_file: []const u8 = "",
 };
 
@@ -33,21 +34,9 @@ pub fn init(io: std.Io, env: *std.process.Environ.Map) void {
 
     Config.current = .{
         .is_inited = true,
-        .colors_enabled = ansi,
+        .colors = ansi,
     };
 }
-
-pub const Colors = struct {
-    pub const reset = "\x1b[0m";
-    pub const bold = "\x1b[1m";
-    pub const red = "\x1b[31m";
-    pub const yellow = "\x1b[33m";
-    pub const magenta = "\x1b[35m";
-
-    pub fn get(comptime code: []const u8) []const u8 {
-        return if (Config.current.colors_enabled) code else "";
-    }
-};
 
 pub fn out(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
     outAdv(true, level, null, fmt, args);
@@ -61,7 +50,11 @@ pub fn outLocked(io: std.Io, level: LogLevel, comptime fmt: []const u8, args: an
     out(level, fmt, args);
 }
 
-pub fn outAdv(nl: bool, level: LogLevel, line: ?usize, comptime fmt: []const u8, args: anytype) void {
+pub fn syntaxError(line: u32, comptime fmt: []const u8, args: anytype) void {
+    outAdv(true, .syntax, line, fmt, args);
+}
+
+pub fn outAdv(nl: bool, level: LogLevel, line: ?u32, comptime fmt: []const u8, args: anytype) void {
     if ((level == .debug and builtin.mode != .Debug) or !Config.current.is_inited) return;
 
     var stdout_writer = std.Io.File.stdout().writer(globals.io, &.{});
@@ -82,20 +75,20 @@ pub fn outAdv(nl: bool, level: LogLevel, line: ?usize, comptime fmt: []const u8,
 
     const color_code = switch (level) {
         .info => "",
-        .warning => Colors.get(Colors.yellow),
-        .err, .syntax => Colors.get(Colors.red),
-        .debug => Colors.get(Colors.magenta),
+        .warning => colors.get(.yellow),
+        .err, .syntax => colors.get(.red),
+        .debug => colors.get(.magenta)
     };
 
     if (line != null)
         output.print(
-            "{s}:{d}: {s}{s}{s}" ++ fmt ++ "{s}",
+            "{s}:{d} {s}{s}{s}" ++ fmt ++ "{s}",
             .{
                 Config.current.build_file,
                 line.?,
                 color_code,
                 prefix,
-                Colors.get(Colors.reset) 
+                colors.get(.reset)
             } ++ args ++ .{
                 if (nl) "\n" else "" 
             },
@@ -106,7 +99,7 @@ pub fn outAdv(nl: bool, level: LogLevel, line: ?usize, comptime fmt: []const u8,
             .{
                 color_code,
                 prefix,
-                Colors.get(Colors.reset)
+                colors.get(.reset)
             } ++ args ++ .{
                 if (nl) "\n" else "" 
             },

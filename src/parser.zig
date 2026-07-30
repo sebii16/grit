@@ -1,7 +1,9 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const logger = @import("logger.zig");
-const condition = @import("condition.zig");
+const if_statement = @import("if_statement.zig");
+const variables = @import("variables.zig");
+const colors = @import("colors.zig");
 
 pub const Directive = enum {
     invalid,
@@ -16,7 +18,7 @@ pub const Directive = enum {
 };
 
 const IfBlock = struct {
-    condition: condition.Condition,
+    condition: if_statement.Condition,
     steps: []Step,
 };
 
@@ -100,23 +102,32 @@ pub const Parser = struct {
     }
 
     fn checkDuplicate(self: *@This(), name: []const u8, decl_type: enum {variable, rule}) !void {
+        inline for (variables.builtin_variables) |v| {
+            if (std.mem.eql(u8, v.name, name)) {
+                logger.syntaxError(
+                    self.lexer.line,
+                    "redefininition of builtin variable {s}'{s}'{s} is not allowed",
+                    .{colors.get(.bold), name, colors.get(.reset)}
+                );
+                return error.DuplicateVariable;
+            }
+        }
+
         const res = try (switch (decl_type) {
             .variable => &self.variable_names,
             .rule => &self.rule_names,
         }).getOrPut(name);
 
         if (res.found_existing) {
-            logger.outAdv(
-                true,
-                .syntax,
-                self.lexer.curr_line,
+            logger.syntaxError(
+                self.lexer.line,
                 "{s} {s}'{s}'{s} redefined: first definition on line {d}",
-                .{@tagName(decl_type), logger.Colors.get(logger.Colors.bold), name, logger.Colors.get(logger.Colors.reset), res.value_ptr.*}
+                .{@tagName(decl_type), colors.get(.bold), name, colors.get(.reset), res.value_ptr.*}
             );
             return error.DuplicateDeclaration;
         }
 
-        res.value_ptr.* = self.lexer.curr_line;
+        res.value_ptr.* = self.lexer.line;
     }
 
     fn parseDecl(self: *Parser) !Ast {
@@ -135,7 +146,7 @@ pub const Parser = struct {
                     return self.syntaxError("@default must be followed by a rule declaration", .{});
 
                 try self.nextToken();
-                try self.expect(.TOK_STRING);
+                try self.expect(&.{ .TOK_STRING });
 
                 const value = self.curr.value;
                 try self.nextToken();
@@ -184,7 +195,7 @@ pub const Parser = struct {
                     switch (directive) {
                         .parallel, .sequential => |d| try steps.append(self.temp_allocator, .{ .directive = d }),
                         .@"if" => {
-                            try steps.append(self.temp_allocator, .{ .if_block = try self.parse_if_block() });
+                            try steps.append(self.temp_allocator, .{ .if_block = try self.parseIfBlock() });
                             continue;
                         },
                         else => return self.syntaxError("directive '@{s}' is invalid inside a rule", .{ self.curr.value }),
@@ -205,44 +216,45 @@ pub const Parser = struct {
         return self.allocator.dupe(Step, steps.items);
     }
 
-    fn parse_if_block(self: *Parser) anyerror!*IfBlock {
+    fn parseIfBlock(self: *Parser) anyerror!*IfBlock {
         // skip @if
         try self.nextToken();
-        try self.expect(.TOK_IDENT);
+        try self.expect(&.{ .TOK_IDENT });
 
         const left = self.curr.value;
         try self.nextToken();
 
-        const op: condition.Operator = switch (self.curr.type) {
+        const op: if_statement.Operator = switch (self.curr.type) {
             .TOK_EQ => .eq,
             .TOK_NEQ => .neq,
             .TOK_LT => .lt,
             .TOK_LTE => .lte,
             .TOK_GT => .gt,
             .TOK_GTE => .gte,
-            else => return self.syntaxError("expected comparision operator got '{s}'({s})", .{@tagName(self.curr.type), self.curr.value})
+            else => return self.syntaxError("expected comparision operator got '{s}' ({s})", .{@tagName(self.curr.type), self.curr.value})
         };
 
         try self.nextToken();
-        try self.expectEither(.TOK_IDENT, .TOK_STRING);
+        try self.expect(&.{ .TOK_IDENT, .TOK_STRING });
 
         const right = self.curr.value;
-        //const right_is_string = switch (self.curr.type) {
-          //  .TOK_IDENT => false,
-            //.TOK_STRING => true,
-            //else => unreachable,
-        //};
+        const right_is_string = switch (self.curr.type) {
+            .TOK_IDENT => false,
+            .TOK_STRING => true,
+            else => unreachable,
+        };
 
         try self.nextToken();
-        try self.expect(.TOK_LBRACE);
+        try self.expect(&.{ .TOK_LBRACE });
 
         const if_block = try self.allocator.create(IfBlock);
         if_block.* = .{
             .condition = .{
-                .left = left,
+                .line = self.lexer.line,
+                .lhs = left,
                 .op = op,
-                .right = right,
-                //.right_is_string = right_is_string,
+                .rhs = right,
+                .right_is_string = right_is_string,
             },
             .steps = try self.parseRule(),
         };
@@ -260,22 +272,17 @@ pub const Parser = struct {
         }
     }
 
-    inline fn syntaxError(self: *Parser, comptime fmt: []const u8, args: anytype) error{SyntaxError} {
-        logger.outAdv(true, .syntax, self.lexer.curr_line, fmt, args);
+    inline fn syntaxError(self: *const Parser, comptime fmt: []const u8, args: anytype) error{SyntaxError} {
+        logger.syntaxError(self.lexer.line, fmt, args);
         return error.SyntaxError;
     }
 
-    fn expect(self: *Parser, t: lexer.TokenType) !void {
-        if (self.curr.type != t) {
-            logger.outAdv(true, .syntax, self.lexer.curr_line, "expected '{s}' got '{s}'", .{ @tagName(t), @tagName(self.curr.type) });
-            return error.SyntaxError;
+    fn expect(self: *Parser, comptime expected: []const lexer.TokenType) !void {
+        inline for (expected) |token| {
+            if (self.curr.type == token)
+                return;
         }
-    } 
 
-    fn expectEither(self: *Parser, t1: lexer.TokenType, t2: lexer.TokenType) !void {
-        if (self.curr.type != t1 and self.curr.type != t2) {
-            logger.outAdv(true, .syntax, self.lexer.curr_line, "expected '{s}' or '{s}' got '{s}'", .{ @tagName(t1), @tagName(t2), @tagName(self.curr.type) });
-            return error.SyntaxError;
-        }
+        return self.syntaxError("unexpected token '{s}'", .{ @tagName(self.curr.type) });
     }
 };

@@ -4,7 +4,7 @@ const logger = @import("logger.zig");
 const globals = @import("globals.zig");
 const threading = @import("threading.zig");
 const variables = @import("variables.zig");
-const color = logger.Colors;
+const colors = @import("colors.zig");
 
 pub const Config = struct {
     build_file: []const u8 = globals.default_build_file,
@@ -36,7 +36,8 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
                             break;
                         },
                         .if_block => |block| {
-                            if (block.condition.isMet(io, globals.gpa)) {
+                            block.condition.result = try block.condition.evaluate(io, globals.gpa);
+                            if (block.condition.result.?) {
                                 for (block.steps) |bs| {
                                     switch (bs) {
                                         .cmd => {
@@ -54,17 +55,17 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
 
                 if (!has_cmd) {
                     logger.out(.info, "nothing to do for build rule {s}'{s}'{s}", .{
-                        color.get(color.bold),
+                        colors.get(.bold),
                         rule.name,
-                        color.get(color.reset)
+                        colors.get(.reset)
                     });
                     return;
                 }
 
                 logger.out(.info, "executing build rule {s}'{s}'{s}{s}{s}{s}", .{
-                    color.get(color.bold),
+                    colors.get(.bold),
                     rule_name,
-                    color.get(color.reset),
+                    colors.get(.reset),
                     if (config.no_expand) " [no-expand]" else "",
                     if (config.dry_run) " [dry-run]" else "",
                     if (config.ignore_errors) " [ignore-errors]" else ""
@@ -85,11 +86,18 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
         }
     }
 
-    logger.out(.err, "build rule {s}'{s}'{s} doesn't exist.", .{color.get(color.bold), rule_name, color.get(color.reset)});
+    logger.out(.err, "build rule {s}'{s}'{s} doesn't exist.", .{colors.get(.bold), rule_name, colors.get(.reset)});
     return error.InvalidRule;
 }
 
-fn runSteps(allocator: std.mem.Allocator, steps: []parser.Step, config: *Config, vars: *const variables.Vars, batch: *std.ArrayList([]const u8), rule: []const u8) !void {
+fn runSteps(
+    allocator: std.mem.Allocator,
+    steps: []parser.Step,
+    config: *Config,
+    vars: *const variables.Vars,
+    batch: *std.ArrayList([]const u8),
+    rule: []const u8) !void {
+
     for (steps) |step| {
         switch (step) {
             .directive => |d| {
@@ -116,7 +124,7 @@ fn runSteps(allocator: std.mem.Allocator, steps: []parser.Step, config: *Config,
                     try threading.runCommands(globals.gpa, &.{expanded}, config);
             },
             .if_block => |block| {
-                if (block.condition.isMet(globals.io, globals.gpa))
+                if (try block.condition.evaluate(globals.io, globals.gpa))
                     try runSteps(allocator, block.steps, config, vars, batch, rule);
             },
         }
