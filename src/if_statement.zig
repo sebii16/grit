@@ -3,6 +3,8 @@ const variables = @import("variables.zig");
 const logger = @import("logger.zig");
 const util = @import("util.zig");
 const colors = @import("colors.zig");
+const parser = @import("parser.zig");
+const globals = @import("globals.zig");
 
 pub const Operator = enum {
     eq,     // ==
@@ -26,6 +28,35 @@ pub const Operator = enum {
     }
 };
 
+pub const IfBlock = struct {
+    condition: ?Condition,
+    steps: []parser.Step,
+    next: ?*IfBlock = null,
+
+    pub fn selectBlock(self: *const @This(), gpa: std.mem.Allocator, vars: *const variables.Vars) !?[]const parser.Step {
+        var current: ?*const @This() = self;
+
+        while (current) |block| : (current = block.next) {
+            if (block.condition == null) {
+                logger.out(.debug, "true", .{});
+                return block.steps;
+            }
+
+            var buf: [5]u8 = undefined;
+            logger.out(.debug, "evaluating condition: {s} {s} {s}", .{block.condition.?.lhs, block.condition.?.op.asString(&buf), block.condition.?.rhs});
+
+            if (try block.condition.?.evaluate(gpa, vars)) {
+                logger.out(.debug, "true", .{});
+                return block.steps;
+            }
+
+            logger.out(.debug, "false", .{});
+        }
+
+        return null;
+    }
+};
+
 pub const Condition = struct {
     line: u32,
 
@@ -35,12 +66,22 @@ pub const Condition = struct {
     right_is_string: bool,
     result: ?bool = null,
 
-    pub fn evaluate(self: *@This(), io: std.Io, gpa: std.mem.Allocator) !bool { 
+    pub fn create(line: u32, lhs: []const u8, op: Operator, rhs: []const u8, right_is_string: bool) Condition {
+        return .{ 
+            .line = line,
+            .lhs = lhs,
+            .op = op,
+            .rhs = rhs,
+            .right_is_string = right_is_string,
+        };
+    }
+
+    pub fn evaluate(self: *const @This(), gpa: std.mem.Allocator, vars: *const variables.Vars) !bool { 
         if (self.result) |res|
             return res;
 
-        for (variables.builtin_variables) |v| {
-            if (!std.mem.eql(u8, v.name, self.lhs))
+        for (variables.builtin_variables) |variable| {
+            if (!std.mem.eql(u8, variable, self.lhs))
                 continue;
 
             var allocated_value: ?variables.Value = null;
@@ -54,8 +95,8 @@ pub const Condition = struct {
                 }
             };
 
-            const value = v.value orelse blk: {
-                const resolved = variables.Value{.string = variables.getRuntimeVariable(v.name, io, gpa) catch break };
+            const value = variables.Vars.getVariable(vars, variable) catch blk: {
+                const resolved = variables.Value{.string = variables.getRuntimeVariable(variable, gpa) catch break };
                 allocated_value = resolved;
                 break :blk resolved;
             };
@@ -89,7 +130,7 @@ pub const Condition = struct {
                                 self.lhs,
                                 colors.get(.reset),
                                 colors.get(.bold),
-                                @tagName(std.meta.activeTag(v.value.?)),
+                                @tagName(std.meta.activeTag(value)),
                                 colors.get(.reset),
                             }
                         );

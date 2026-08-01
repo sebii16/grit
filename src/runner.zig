@@ -27,41 +27,6 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
             .RuleDecl => |rule| {
                 if (!std.mem.eql(u8, rule.name, rule_name)) continue;
 
-                var has_cmd = false;
-
-                for (rule.steps) |step| {
-                    switch (step) {
-                        .cmd => {
-                            has_cmd = true;
-                            break;
-                        },
-                        .if_block => |block| {
-                            block.condition.result = try block.condition.evaluate(io, globals.gpa);
-                            if (block.condition.result.?) {
-                                for (block.steps) |bs| {
-                                    switch (bs) {
-                                        .cmd => {
-                                            has_cmd = true;
-                                            break;
-                                        },
-                                        else => {},
-                                    }
-                                }
-                            }
-                        },
-                        else => {},
-                    }
-                }
-
-                if (!has_cmd) {
-                    logger.out(.info, "nothing to do for build rule {s}'{s}'{s}", .{
-                        colors.get(.bold),
-                        rule.name,
-                        colors.get(.reset)
-                    });
-                    return;
-                }
-
                 logger.out(.info, "executing build rule {s}'{s}'{s}{s}{s}{s}", .{
                     colors.get(.bold),
                     rule_name,
@@ -71,7 +36,11 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
                     if (config.ignore_errors) " [ignore-errors]" else ""
                 });
 
-                const vars = try variables.Vars.init(allocator, io, ast);
+                const vars = variables.Vars.buildMap(allocator, io, ast) catch |e| {
+                    logger.out(.err, "failed to build variable map", .{});
+                    logger.out(.debug, "{s}", .{@errorName(e)});
+                    return e;
+                };
                 var batch: std.ArrayList([]const u8) = .empty;
 
                 try runSteps(allocator, rule.steps, config, &vars, &batch, rule_name);
@@ -92,7 +61,7 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
 
 fn runSteps(
     allocator: std.mem.Allocator,
-    steps: []parser.Step,
+    steps: []const parser.Step,
     config: *Config,
     vars: *const variables.Vars,
     batch: *std.ArrayList([]const u8),
@@ -124,8 +93,18 @@ fn runSteps(
                     try threading.runCommands(globals.gpa, &.{expanded}, config);
             },
             .if_block => |block| {
-                if (try block.condition.evaluate(globals.io, globals.gpa))
-                    try runSteps(allocator, block.steps, config, vars, batch, rule);
+                if (try block.selectBlock(globals.gpa, vars)) |selected_steps| {
+                    if (selected_steps.len == 0) {
+                        logger.out(.info, "nothing to do for build rule {s}'{s}'{s}", .{
+                            colors.get(.bold),
+                            rule,
+                            colors.get(.reset)
+                        });
+                        return;
+                    }
+
+                    try runSteps(allocator, selected_steps, config, vars, batch, rule);
+                }
             },
         }
     }

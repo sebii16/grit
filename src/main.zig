@@ -24,13 +24,13 @@ pub fn main(init: std.process.Init) u8 {
     defer logger.out(.debug, "arena: {} bytes allocated", .{init.arena.queryCapacity()});
 
     switch (args.action) {
-        .Help => {
+        .help => {
             logger.out(.info, "{s}", .{ globals.help_msg });
         },
-        .Version => {
+        .version => {
             logger.out(.info, "{s}", .{ globals.ver_msg });
         },
-        .Run => {
+        .run => {
             const src = readFile(arena, io, args.config.build_file) catch blk: {
                 if (@import("builtin").mode == .Debug) {
                     logger.out(.debug, "using test.grit", .{});

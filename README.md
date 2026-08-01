@@ -52,12 +52,12 @@ or to use double quotes inside strings:
 
 Directives start with `@` and modify how following commands or rules behave.
 
-| Directive      | Effect                                                                |
-| -------------- | --------------------------------------------------------------------- |
-| `@default`     | Marks the next rule as the default.                                   |
-| `@parallel`    | Commands after this run parallel to each other, until `@sequential`.  |     
-| `@sequential`  | Commands after this run one at a time (default).                      |
-| `@if`          | Executes the commands in its block only if the condition is true      |
+| Directive             | Effect                                                                              |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| `@default`            | Marks the next rule as the default.                                                 |
+| `@parallel`           | Commands after this run parallel to each other, until `@sequential`.                |     
+| `@sequential`         | Commands after this run one at a time (default).                                    |
+| `@if, @elif, @else`   | Executes the first block whose condition is true, or a @else block if none are true |
 
 Parallel and sequential blocks can be mixed inside a rule.
 
@@ -74,28 +74,11 @@ FLAGS = "-O Debug -lc"
 build {
     @if OS == "windows" {
         "zig build-exe $SRC -femit-bin=$OUT.exe $FLAGS"
-    }
-
-    @if OS == "linux" {
+    } @elif OS == "linux" {
         "zig build-exe $SRC -femit-bin=$OUT $FLAGS"
+    } @else {
+        print "OS not supported"
     }
-}
-
-# Another rule with multiple commands and parallel and sequential mode
-clean {
-    @parallel
-    @if OS == "windows" {
-        "del $OUT.exe"
-        "del $OUT.pdb"
-    }
-
-    @if OS == "linux" {
-        "rm -f $OUT"
-        "rm -f $OUT.pdb"
-    }
-
-    @sequential
-    'echo "Cleanup done"'
 }
 ```
 
@@ -108,13 +91,13 @@ grit
 **Run a different rule:**
 
 ```sh
-grit clean
+grit RULE
 ```
 
 **Run a different build file:**
 
 ```sh
-grit -f file_name
+grit -f FILE
 ```
 
 **Run with a specific number of parallel threads:**

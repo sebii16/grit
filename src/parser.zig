@@ -11,21 +11,18 @@ pub const Directive = enum {
     parallel,
     sequential,
     @"if",
+    elif,
+    @"else",
 
     inline fn parse(name: []const u8) Directive {
         return std.meta.stringToEnum(Directive, name) orelse .invalid;
     }
 };
 
-const IfBlock = struct {
-    condition: if_statement.Condition,
-    steps: []Step,
-};
-
 pub const Step = union(enum) {
     cmd: []const u8,
     directive: Directive,
-    if_block: *IfBlock,
+    if_block: *if_statement.IfBlock,
 };
 
 const Var = struct {
@@ -103,7 +100,7 @@ pub const Parser = struct {
 
     fn checkDuplicate(self: *@This(), name: []const u8, decl_type: enum {variable, rule}) !void {
         inline for (variables.builtin_variables) |v| {
-            if (std.mem.eql(u8, v.name, name)) {
+            if (std.mem.eql(u8, v, name)) {
                 logger.syntaxError(
                     self.lexer.line,
                     "redefininition of builtin variable {s}'{s}'{s} is not allowed",
@@ -184,7 +181,7 @@ pub const Parser = struct {
         var steps: std.ArrayList(Step) = .empty;
         defer steps.deinit(self.temp_allocator);
 
-        while (self.curr.type != .TOK_RBRACE) {
+        outer: while (self.curr.type != .TOK_RBRACE) {
             switch (self.curr.type) {
                 .TOK_STRING => {
                     try steps.append(self.temp_allocator, .{ .cmd = self.curr.value });
@@ -195,10 +192,41 @@ pub const Parser = struct {
                     switch (directive) {
                         .parallel, .sequential => |d| try steps.append(self.temp_allocator, .{ .directive = d }),
                         .@"if" => {
-                            try steps.append(self.temp_allocator, .{ .if_block = try self.parseIfBlock() });
-                            continue;
+                            const first_block = try self.parseIfBlock(.@"if");
+                            var current_block = first_block;
+
+                            while (true) {
+                                if (self.curr.type != .TOK_DIRECTIVE) {
+                                    break;
+                                }
+
+                                const next_directive = Directive.parse(self.curr.value);
+
+                                switch (next_directive) {
+                                    .elif => {
+                                        const elif_block = try self.parseIfBlock(.elif);
+                                        current_block.next = elif_block;
+                                        current_block = elif_block;
+                                    },
+                                    .@"else" => {
+                                        const else_block = try self.parseIfBlock(.@"else");
+                                        current_block.next = else_block;
+                                        current_block = else_block;
+                                        break;
+                                    },
+                                    else => {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            try steps.append(self.temp_allocator, .{.if_block = first_block});
+                            continue :outer;
                         },
-                        else => return self.syntaxError("directive '@{s}' is invalid inside a rule", .{ self.curr.value }),
+                        .elif, .@"else" => |e| {
+                            return self.syntaxError("@{s} has no matching @if", .{@tagName(e)});
+                        },
+                        else => return self.syntaxError("directive '@{s}' is invalid here", .{ self.curr.value }),
                     }
                 },
                 .TOK_EOF => {
@@ -216,49 +244,64 @@ pub const Parser = struct {
         return self.allocator.dupe(Step, steps.items);
     }
 
-    fn parseIfBlock(self: *Parser) anyerror!*IfBlock {
-        // skip @if
+    const IfType = enum {
+        @"if",
+        elif,
+        @"else",
+    };
+
+    fn parseIfBlock(self: *Parser, initial_type: IfType) anyerror!*if_statement.IfBlock {
+        // skip opener
         try self.nextToken();
-        try self.expect(&.{ .TOK_IDENT });
 
-        const left = self.curr.value;
-        try self.nextToken();
+        const if_block = try self.allocator.create(if_statement.IfBlock);
 
-        const op: if_statement.Operator = switch (self.curr.type) {
-            .TOK_EQ => .eq,
-            .TOK_NEQ => .neq,
-            .TOK_LT => .lt,
-            .TOK_LTE => .lte,
-            .TOK_GT => .gt,
-            .TOK_GTE => .gte,
-            else => return self.syntaxError("expected comparision operator got '{s}' ({s})", .{@tagName(self.curr.type), self.curr.value})
-        };
+        switch (initial_type) {
+            .@"if", .elif => {
+                try self.expect(&.{ .TOK_IDENT });
 
-        try self.nextToken();
-        try self.expect(&.{ .TOK_IDENT, .TOK_STRING });
+                const lhs = self.curr.value;
+                try self.nextToken();
 
-        const right = self.curr.value;
-        const right_is_string = switch (self.curr.type) {
-            .TOK_IDENT => false,
-            .TOK_STRING => true,
-            else => unreachable,
-        };
+                const op: if_statement.Operator = switch (self.curr.type) {
+                    .TOK_EQ => .eq,
+                    .TOK_NEQ => .neq,
+                    .TOK_LT => .lt,
+                    .TOK_LTE => .lte,
+                    .TOK_GT => .gt,
+                    .TOK_GTE => .gte,
+                    else => return self.syntaxError("expected comparision operator got '{s}' ({s})", .{@tagName(self.curr.type), self.curr.value})
+                };
 
-        try self.nextToken();
-        try self.expect(&.{ .TOK_LBRACE });
+                try self.nextToken();
+                try self.expect(&.{ .TOK_IDENT, .TOK_STRING });
 
-        const if_block = try self.allocator.create(IfBlock);
-        if_block.* = .{
-            .condition = .{
-                .line = self.lexer.line,
-                .lhs = left,
-                .op = op,
-                .rhs = right,
-                .right_is_string = right_is_string,
+                const rhs = self.curr.value;
+                const rhs_is_string = self.curr.type == .TOK_STRING;
+
+                try self.nextToken();
+                try self.expect(&.{ .TOK_LBRACE });
+
+                if_block.* = .{
+                    .condition = if_statement.Condition.create(
+                        self.lexer.line,
+                        lhs,
+                        op,
+                        rhs,
+                        rhs_is_string,
+                    ),
+                    .steps = try self.parseRule(),
+                };
             },
-            .steps = try self.parseRule(),
-        };
-
+            .@"else" => {
+                try self.expect(&.{ .TOK_LBRACE });
+                if_block.* = .{
+                    .condition = null,
+                    .steps = try self.parseRule(),
+                };
+            }
+        }
+        
         return if_block;
     }
 

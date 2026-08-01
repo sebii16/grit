@@ -3,14 +3,14 @@ const logger = @import("logger.zig");
 const runner = @import("runner.zig");
 
 pub const Actions = enum {
-    Help,
-    Version,
-    Run,
+    help,
+    version,
+    run,
 };
 
 pub const ParsedArgs = struct {
     config: runner.Config = .{},
-    action: Actions = .Run,
+    action: Actions = .run,
 };
 
 pub fn parseArgs(allocator: std.mem.Allocator, args_: std.process.Args) !ParsedArgs {
@@ -36,10 +36,10 @@ pub fn parseArgs(allocator: std.mem.Allocator, args_: std.process.Args) !ParsedA
 
         if (res.config.rule_name == null) {
             if (cmp2(arg, "--help", "-h")) {
-                res.action = .Help;
+                res.action = .help;
                 return res;
             } else if (cmp2(arg, "--version", "-v")) {
-                res.action = .Version;
+                res.action = .version;
                 return res;
             }
         }

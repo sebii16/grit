@@ -82,7 +82,7 @@ pub fn outAdv(nl: bool, level: LogLevel, line: ?u32, comptime fmt: []const u8, a
 
     if (line != null)
         output.print(
-            "{s}:{d} {s}{s}{s}" ++ fmt ++ "{s}",
+            "{s}:{d}: {s}{s}{s}" ++ fmt ++ "{s}",
             .{
                 Config.current.build_file,
                 line.?,

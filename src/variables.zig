@@ -22,70 +22,42 @@ pub const Value = union(enum) {
     }
 };
 
-const Builtin = struct {
-    name: []const u8,
-    value: ?Value,
-};
-
-pub const builtin_variables = [_]Builtin{
-    .{ .name = "OS", .value = .{ .string = @tagName(builtin.os.tag) } },
-    .{ .name = "ARCH", .value = .{ .string = @tagName(builtin.cpu.arch) } },
-    .{ .name = "TIME", .value = null }, 
-    .{ .name = "DATE", .value = null },
-    .{ .name = "CWD", .value = null },
-    .{ .name = "GRIT_VER", .value = .{ .version = globals.ver }, },
-};
-
-pub fn getRuntimeVariable(name: []const u8, io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
-    const type_ = std.meta.stringToEnum(enum{TIME, DATE, CWD}, name) orelse return error.UnknownVariable;
-    if (type_ == .CWD) {
-        var buf: [@field(std.os, @tagName(builtin.target.os.tag)).PATH_MAX]u8 = undefined;
-        logger.out(.debug, "PATH_MAX: {}", .{@sizeOf(@TypeOf(buf))});
-        const len = try std.process.currentPath(io, &buf);
-        return try allocator.dupe(u8, buf[0..len]);
-    }
-
-    var time: c.time_t = c.time(null);
-    const tm = c.localtime(&time) orelse return error.TimeConversionFailed;
-    var buf: [10]u8 = undefined;
-
-    const res = switch (type_) {
-        .DATE => try std.fmt.bufPrint(&buf, "{d:0>2}.{d:0>2}.{d:0>2}", .{
-            @as(u32, @intCast(tm.*.tm_mday)),
-            @as(u32, @intCast(tm.*.tm_mon + 1)),
-            @as(u32, @intCast(tm.*.tm_year + 1900)),
-        }),
-
-        .TIME => try std.fmt.bufPrint(&buf, "{d:0>2}:{d:0>2}", .{
-            @as(u32, @intCast(tm.*.tm_hour)),
-            @as(u32, @intCast(tm.*.tm_min)),
-        }),
-
-        .CWD => unreachable,
-    };
-
-    return allocator.dupe(u8, res);
-}
-
 pub const VarMap = std.StringHashMap(?Value);
+
+pub const builtin_variables = [_][]const u8 {
+    "OS",
+    "ARCH",
+    "CWD",
+    "GRIT_VER",
+    "TIME",
+    "DATE",
+};
+
 
 pub const Vars = struct {
     map: VarMap,
     allocator: std.mem.Allocator,
     io: std.Io,
 
-    pub fn init(allocator: std.mem.Allocator, io: std.Io, ast: []const parser.Ast) !@This() {
+    fn addBuiltinVariables(self: *@This(), io: std.Io, allocator: std.mem.Allocator) !void {
+        const cwd = try std.process.currentPathAlloc(io, allocator);
+
+        try self.map.put("OS", .{ .string = @tagName(builtin.os.tag) });
+        try self.map.put("ARCH", .{ .string = @tagName(builtin.cpu.arch) });
+        try self.map.put("CWD", .{ .string = cwd });
+        try self.map.put("GRIT_VER", .{ .version = globals.ver });
+
+        logger.out(.debug, "builtin variables added", .{});
+    }
+
+    pub fn buildMap(allocator: std.mem.Allocator, io: std.Io, ast: []const parser.Ast) !@This() {
         var self = @This(){
             .map = VarMap.init(allocator),
             .allocator = allocator, 
             .io = io,
         };
 
-        // disabled because we use an arena allocator right now
-        //errdefer self.map.deinit();
-
-        inline for (builtin_variables) |v|
-            try self.map.put(v.name, v.value);
+        try self.addBuiltinVariables(io, allocator);
 
         for (ast) |node| {
             switch (node) {
@@ -100,6 +72,8 @@ pub const Vars = struct {
                 else => {},
             }
         }
+
+        logger.out(.debug, "all variables initialized", .{});
 
         return self;
     }
@@ -167,9 +141,32 @@ pub const Vars = struct {
             return res;
         }
 
-        return .{ .string = try getRuntimeVariable(name, globals.io, globals.arena) };
+        return .{ .string = try getRuntimeVariable(name, globals.arena) };
     }
 };
+
+pub fn getRuntimeVariable(name: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    const type_ = std.meta.stringToEnum(enum{TIME, DATE}, name) orelse return error.UnknownVariable;
+
+    var time: c.time_t = c.time(null);
+    const tm = c.localtime(&time) orelse return error.TimeConversionFailed;
+    var buf: [10]u8 = undefined;
+
+    const res = switch (type_) {
+        .DATE => try std.fmt.bufPrint(&buf, "{d:0>2}.{d:0>2}.{d:0>2}", .{
+            @as(u32, @intCast(tm.*.tm_mday)),
+            @as(u32, @intCast(tm.*.tm_mon + 1)),
+            @as(u32, @intCast(tm.*.tm_year + 1900)),
+        }),
+
+        .TIME => try std.fmt.bufPrint(&buf, "{d:0>2}:{d:0>2}", .{
+            @as(u32, @intCast(tm.*.tm_hour)),
+            @as(u32, @intCast(tm.*.tm_min)),
+        }),
+    };
+
+    return allocator.dupe(u8, res);
+}
 
 fn reportBadVariable(full_input: []const u8, rule_name: []const u8, start: usize, end: usize, err: anyerror) anyerror {
     logger.out(.syntax, "undefined or invalid variable in rule {s}'{s}'{s}:\n", .{ colors.get(.bold), rule_name, colors.get(.reset) });

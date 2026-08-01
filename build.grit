@@ -15,9 +15,7 @@ clean {
 debug {
     @if OS == "windows" {
         "zig build-exe $FILES -femit-bin=$OUT-d.exe $DEBUG_FLAGS"
-    }
-
-    @if OS == "linux" {
+    } @elif OS == "linux" {
         "zig build-exe $FILES -femit-bin=$OUT-d $DEBUG_FLAGS"
     }
 }
@@ -25,9 +23,7 @@ debug {
 release {
     @if OS == "windows" {
         "zig build-exe $FILES -femit-bin=$OUT.exe $RELEASE_FLAGS"
-    }
-
-    @if OS == "linux" {
+    } @elif OS == "linux" {
         "zig build-exe $FILES -femit-bin=$OUT $RELEASE_FLAGS"
     }
 }
@@ -36,12 +32,19 @@ install {
   @if OS == "windows" {
     "copy $OUT.exe c:\grit"
     "copy LICENSE c:\grit"
-  }
-
-  @if OS == "linux" {
+  } @elif OS == "linux" {
     "sudo mv grit /usr/bin/grit"
   }
 }
 
 test {
+    @if OS == "windows" {
+        "echo windows"
+    } @elif OS == "MACOS" {
+        "echo MACOS"
+    } @elif OS == "linux" {
+        "echo linux"
+    } @else {
+        "echo something else"
+    }
 }
