@@ -41,7 +41,7 @@ pub fn main(init: std.process.Init) u8 {
             var parser = p.Parser.init(arena, gpa, src);
             const ast = parser.parseAll() catch return 1;
             
-            runner.runBuildRule(arena, io, ast, &args.config, &parser) catch return 1;
+            runner.runBuildRule(arena, gpa, io, ast, &args.config, &parser) catch return 1;
         },
     }
 

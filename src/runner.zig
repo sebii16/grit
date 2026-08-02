@@ -2,7 +2,7 @@ const std = @import("std");
 const parser = @import("parser.zig");
 const logger = @import("logger.zig");
 const globals = @import("globals.zig");
-const threading = @import("threading.zig");
+const scheduler = @import("scheduler.zig");
 const variables = @import("variables.zig");
 const colors = @import("colors.zig");
 
@@ -16,7 +16,7 @@ pub const Config = struct {
     ignore_errors: bool = false,
 };
 
-pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parser.Ast, config: *Config, prs: *const parser.Parser) !void {
+pub fn runBuildRule(arena: std.mem.Allocator, gpa: std.mem.Allocator, io: std.Io, ast: []const parser.Ast, config: *Config, prs: *const parser.Parser) !void {
     const rule_name = config.rule_name orelse prs.default_rule orelse {
         logger.out(.err, "no build rule selected", .{});
         return error.InvalidRule;
@@ -36,18 +36,18 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
                     if (config.ignore_errors) " [ignore-errors]" else ""
                 });
 
-                const vars = variables.Vars.buildMap(allocator, io, ast) catch |e| {
+                const vars = variables.Vars.buildMap(arena, io, ast) catch |e| {
                     logger.out(.err, "failed to build variable map", .{});
                     logger.out(.debug, "{s}", .{@errorName(e)});
                     return e;
                 };
+
                 var batch: std.ArrayList([]const u8) = .empty;
 
-                try runSteps(allocator, rule.steps, config, &vars, &batch, rule_name);
+                try runSteps(arena, gpa, io, rule.steps, config, &vars, &batch, rule_name);
 
-                if (batch.items.len > 0) {
-                    try threading.runCommands(globals.gpa, batch.items, config);
-                }
+                if (batch.items.len > 0)
+                    try scheduler.scheduleCommands(io, gpa, batch.items, config);
 
                 return;
             },
@@ -60,7 +60,9 @@ pub fn runBuildRule(allocator: std.mem.Allocator, io: std.Io, ast: []const parse
 }
 
 fn runSteps(
-    allocator: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    gpa: std.mem.Allocator,
+    io: std.Io,
     steps: []const parser.Step,
     config: *Config,
     vars: *const variables.Vars,
@@ -73,13 +75,13 @@ fn runSteps(
                 switch (d) {
                     .sequential => {
                         if (config.parallel and batch.items.len > 0) {
-                            try threading.runCommands(globals.gpa, batch.items, config);
+                            try scheduler.scheduleCommands(io, gpa, batch.items, config);
                             batch.clearRetainingCapacity();
                         }
                         config.parallel = false;
                     },
                     .parallel => config.parallel = true,
-                    .@"if" => {},
+                    //.@"if" => {},
                     else => unreachable,
                 }
                 logger.out(.debug, "parallel = {}", .{ config.parallel });
@@ -88,12 +90,12 @@ fn runSteps(
                 const expanded = if (!config.no_expand) try vars.expand(cmd, rule) else cmd;
 
                 if (config.parallel)
-                    try batch.append(allocator, expanded)
+                    try batch.append(arena, expanded)
                 else 
-                    try threading.runCommands(globals.gpa, &.{expanded}, config);
+                    try scheduler.scheduleCommands(io, gpa, &.{expanded}, config);
             },
             .if_block => |block| {
-                if (try block.selectBlock(globals.gpa, vars)) |selected_steps| {
+                if (try block.selectBlock(gpa, vars)) |selected_steps| {
                     if (selected_steps.len == 0) {
                         logger.out(.info, "nothing to do for build rule {s}'{s}'{s}", .{
                             colors.get(.bold),
@@ -103,7 +105,7 @@ fn runSteps(
                         return;
                     }
 
-                    try runSteps(allocator, selected_steps, config, vars, batch, rule);
+                    try runSteps(arena, gpa, io, selected_steps, config, vars, batch, rule);
                 }
             },
         }

@@ -36,15 +36,3 @@ install {
     "sudo mv grit /usr/bin/grit"
   }
 }
-
-test {
-    @if OS == "windows" {
-        "echo windows"
-    } @elif OS == "MACOS" {
-        "echo MACOS"
-    } @elif OS == "linux" {
-        "echo linux"
-    } @else {
-        "echo something else"
-    }
-}
