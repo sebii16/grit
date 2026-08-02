@@ -36,3 +36,19 @@ install {
     "sudo mv grit /usr/bin/grit"
   }
 }
+
+test {
+    @parallel
+    "echo test"
+
+    "echo test"
+    "echo test"
+    "echo test"
+    "echo test"
+    "echo test"
+    "echo test"
+    "echo test"
+    "echo test"
+    "echo test"
+    "echo test"
+}

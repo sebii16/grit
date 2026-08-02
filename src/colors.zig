@@ -1,4 +1,5 @@
 const logger = @import("logger.zig");
+const config = @import("config.zig");
 
 const Colors = enum {
     reset,
@@ -17,5 +18,5 @@ const Colors = enum {
 };
 
 pub fn get(comptime color: Colors) []const u8 {
-    return if (logger.Config.current.colors) @field(Colors.codes, @tagName(color)) else "";
+    return if (config.Config.current.no_colors) "" else @field(Colors.codes, @tagName(color));
 }

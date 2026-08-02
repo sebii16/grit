@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const globals = @import("globals.zig");
 const colors = @import("colors.zig");
+const config = @import("config.zig");
 
 pub const LogLevel = enum {
     info,
@@ -11,31 +12,15 @@ pub const LogLevel = enum {
     syntax,
 };
 
-pub const Config = struct {
-    pub var current: Config = .{};
-    
-    is_inited: bool = false,
-
-    colors: bool = false,
-    build_file: []const u8 = "",
-};
-
-pub fn init(io: std.Io, env: *std.process.Environ.Map) void {
-    if (Config.current.is_inited) return;
-
+pub fn init(cfg: *config.Config, io: std.Io, env: *std.process.Environ.Map) void {
     const stdout = std.Io.File.stdout();
     const is_tty = stdout.isTty(io) catch false;
-    const is_dumb = env.get("DUMB");
+    const term_env = env.get("TERM");
 
-    const ansi = if (is_tty and builtin.os.tag == .windows) br: {        
+    cfg.no_colors = !if (is_tty and builtin.os.tag == .windows) br: {        
         std.Io.File.stdout().enableAnsiEscapeCodes(io) catch {};
         break :br stdout.supportsAnsiEscapeCodes(io) catch false;
-    } else is_tty and (is_dumb == null or !std.mem.eql(u8, is_dumb.?, "dumb"));
-
-    Config.current = .{
-        .is_inited = true,
-        .colors = ansi,
-    };
+    } else is_tty and (term_env == null or !std.mem.eql(u8, term_env.?, "dumb"));
 }
 
 pub fn out(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
@@ -55,8 +40,8 @@ pub fn syntaxError(line: u32, comptime fmt: []const u8, args: anytype) void {
 }
 
 pub fn outAdv(nl: bool, level: LogLevel, line: ?u32, comptime fmt: []const u8, args: anytype) void {
-    if ((level == .debug and builtin.mode != .Debug) or !Config.current.is_inited) return;
-
+    if (level == .debug and builtin.mode != .Debug) return;
+    
     var stdout_writer = std.Io.File.stdout().writer(globals.io, &.{});
     var stderr_writer = std.Io.File.stderr().writer(globals.io, &.{});
 
@@ -84,7 +69,7 @@ pub fn outAdv(nl: bool, level: LogLevel, line: ?u32, comptime fmt: []const u8, a
         output.print(
             "{s}:{d}: {s}{s}{s}" ++ fmt ++ "{s}",
             .{
-                Config.current.build_file,
+                config.Config.current.build_file,
                 line.?,
                 color_code,
                 prefix,

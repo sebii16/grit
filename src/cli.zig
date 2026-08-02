@@ -1,89 +1,134 @@
 const std = @import("std");
 const logger = @import("logger.zig");
-const runner = @import("runner.zig");
+const config = @import("config.zig");
+const colors = @import("colors.zig");
 
-pub const Actions = enum {
+pub const Action = enum {
     help,
     version,
     run,
 };
 
-pub const ParsedArgs = struct {
-    config: runner.Config = .{},
-    action: Actions = .run,
+const OptionEffect = union(enum) {
+    set_field: []const u8,
+    set_action: Action
 };
 
-pub fn parseArgs(allocator: std.mem.Allocator, args_: std.process.Args) !ParsedArgs {
-    var res = ParsedArgs{};
+const Option = struct {
+    long: []const u8,
+    short: ?u8 = null,
+    effect: OptionEffect,
+};
 
-    const args = try args_.toSlice(allocator);
+const cli_options = [_]Option{
+    .{ .long = "file", .short = 'f', .effect = .{ .set_field = "build_file" } },
+    .{ .long = "dry-run", .short = 'd', .effect = .{ .set_field = "dry_run" } },
+    .{ .long = "no-expand", .effect = .{ .set_field = "no_expand" } },
+    .{ .long = "threads", .short = 't', .effect = .{ .set_field = "threads" } },
+    .{ .long = "ignore-errors", .effect = .{ .set_field = "ignore_errors" } },
+    .{ .long = "no-colors", .effect = .{ .set_field = "no_colors" } },
+    .{ .long = "help", .short = 'h', .effect = .{ .set_action = .help } },
+    .{ .long = "version", .short = 'v', .effect = .{ .set_action = .version } },
+};
 
-    // skip executable
+pub fn parseArgs(args: []const []const u8, cfg: *config.Config) !Action {
+    // start after executable name
     var i: usize = 1;
-
-    if (i >= args.len) return res;
-
-    if (args[i][0] != '-') {
-        res.config.rule_name = args[i];
-        i += 1;
-    }
 
     while (i < args.len) : (i += 1) {
         const arg = args[i];
 
-        if (arg.len < 2 or arg[0] != '-') 
-            return cliError("invalid flag '{s}'", .{arg});
+        const option = findOption(arg) orelse {
+            // if the first arg isnt an option treat it as a rule name
+            if (i == 1 and arg[0] != '-') {
+                cfg.rule_name = arg;
+                continue;
+            } else {
+                logger.out(.err, "unknown flag {s}'{s}'{s}", .{colors.get(.bold), arg, colors.get(.reset)});
+                return error.UnknownFlag;
+            }
+        };
 
-        if (res.config.rule_name == null) {
-            if (cmp2(arg, "--help", "-h")) {
-                res.action = .help;
-                return res;
-            } else if (cmp2(arg, "--version", "-v")) {
-                res.action = .version;
-                return res;
+        switch (option.effect) {
+            .set_action => |action| {
+                if (cfg.rule_name != null) {
+                    // dont allow --help and --version after a rule has been provided
+                    logger.out(.err, "flag {s}'{s}'{s} is not allowed after declaring a rule", .{colors.get(.bold), arg, colors.get(.reset)});
+                    return error.InvalidActionFlag;
+                }
+                return action;
+            },
+            .set_field => |field| {
+                inline for (@typeInfo(@TypeOf(cfg.*)).@"struct".fields) |struct_field| {
+                    if (std.mem.eql(u8, field, struct_field.name)) 
+                        try parseField(cfg, struct_field, args, &i);
+                }
             }
         }
-
-        if (cmp2(arg, "--dry-run", "-d")) {
-            res.config.dry_run = true;
-        } else if (cmp(arg, "--no-expand")) {
-            res.config.no_expand = true;
-        } else if (cmp2(arg, "--file", "-f")) {
-            res.config.build_file = getValue(&i, args) catch return cliError("must specify a file after '{s}'", .{arg});
-        } else if (cmp2(arg, "--threads", "-t")) {
-            const value = getValue(&i, args) catch return cliError("must specify a number after '{s}'", .{arg});
-            const thread_count = std.fmt.parseInt(usize, value, 10) catch return cliError("'{s}' is not a valid number", .{value});
-
-            if (thread_count == 0) {
-                logger.out(.warning, "thread count of 0 ignored, using default", .{});
-            }
-            res.config.threads = thread_count;
-        } else if (cmp(arg, "--ignore-errors")) {
-            res.config.ignore_errors = true;
-        } else if (cmp(arg, "--no-colors")) {
-            logger.Config.current.colors = false;
-        } else return cliError("invalid flag '{s}'", .{arg});
     }
 
-    return res;
+    return .run;
 }
 
-inline fn cmp2(haystack: []const u8, needle1: []const u8, needle2: []const u8) bool {
-    return std.mem.eql(u8, haystack, needle1) or std.mem.eql(u8, haystack, needle2);
+fn findOption(arg: []const u8) ?Option {
+    if (std.mem.startsWith(u8, arg, "--")) {
+        // name starts after --
+        const name = arg[2..];
+
+        for (cli_options) |opt| {
+            if (std.mem.eql(u8, opt.long, name))
+                return opt;
+        }
+    } else if (arg.len == 2 and arg[0] == '-') {
+        for (cli_options) |opt| {
+            if (opt.short == arg[1])
+                return opt;
+        }
+    }
+
+    return null;
 }
 
-inline fn cmp(first: []const u8, second: []const u8) bool {
-    return std.mem.eql(u8, first, second);
+fn parseField(cfg: *config.Config, comptime field: std.builtin.Type.StructField, args: []const []const u8, index: *usize) !void {
+    const field_value = &@field(cfg, field.name);
+
+    switch (@typeInfo(field.type)) {
+        .bool => {
+            field_value.* = true;
+        },
+        .int => {
+            const value = try getValue(index, args);
+            field_value.* = std.fmt.parseInt(field.type, value, 10) catch {
+                logger.out(.err, "'{s}' is not a valid number", .{value});
+                return error.InvalidNumber;
+            };
+        },
+        .optional => |optional| {
+            if (optional.child == []const u8) {
+                field_value.* = try getValue(index, args);
+            } else {
+                @compileError("unhandled type: " ++ @typeName(field.type));
+            }
+        },
+        .pointer => |pointer| {
+            if (pointer.size == .slice and pointer.child == u8) {
+                field_value.* = try getValue(index, args);
+            } else {
+                @compileError("unhandled type: " ++ @typeName(field.type));
+            }
+        },
+        else => @compileError("unhandled type: " ++ @typeName(field.type)),
+    }
 }
 
 fn getValue(pos: *usize, args: []const []const u8) ![]const u8 {
-    if (pos.* + 1 >= args.len) return error.FlagMissingValue;
+    const flag = args[pos.*];
+
+    if (pos.* + 1 >= args.len) {
+        logger.out(.err, "expected a value after flag {s}'{s}'{s}", .{colors.get(.bold), flag, colors.get(.reset)});
+        return error.FlagMissingValue;
+    }
 
     pos.* += 1;
     return args[pos.*];
-}
-
-inline fn cliError(comptime fmt: []const u8, args: anytype) error{CliError} {
-    logger.out(.err, fmt, args);
-    return error.CliError;
 }

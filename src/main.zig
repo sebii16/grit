@@ -5,6 +5,8 @@ const p = @import("parser.zig");
 const runner = @import("runner.zig");
 const logger = @import("logger.zig");
 const globals = @import("globals.zig");
+const config = @import("config.zig");
+const colors = @import("colors.zig");
 
 pub fn main(init: std.process.Init) u8 {
     const arena = init.arena.allocator();
@@ -13,17 +15,21 @@ pub fn main(init: std.process.Init) u8 {
 
     globals.init(arena, gpa, io);
 
-    logger.init(io, init.environ_map);
+    const cfg = &config.Config.current;
+    logger.init(cfg, io, init.environ_map);
 
-    var args = cli.parseArgs(arena, init.minimal.args) catch return 1;
+    const args = init.minimal.args.toSlice(arena) catch return 1;
+    const action = cli.parseArgs(args, cfg) catch return 1;
 
-    logger.Config.current.build_file = args.config.build_file;
-
-    args.config.threads = if (args.config.threads > 0) args.config.threads else std.Thread.getCpuCount() catch 1;
-
+    // validate thread count
+    if (cfg.threads == 0) {
+        cfg.threads = std.Thread.getCpuCount() catch 1;
+        logger.out(.warning, "thread count of 0 ignored, using default: {d}", .{cfg.threads});
+    }
+    
     defer logger.out(.debug, "arena: {} bytes allocated", .{init.arena.queryCapacity()});
 
-    switch (args.action) {
+    switch (action) {
         .help => {
             logger.out(.info, "{s}", .{ globals.help_msg });
         },
@@ -31,17 +37,11 @@ pub fn main(init: std.process.Init) u8 {
             logger.out(.info, "{s}", .{ globals.ver_msg });
         },
         .run => {
-            const src = readFile(arena, io, args.config.build_file) catch blk: {
-                if (@import("builtin").mode == .Debug) {
-                    logger.out(.debug, "using test.grit", .{});
-                    break :blk readFile(arena, io, "test.grit") catch return 1;
-                }
-                return 1;
-            };
+            const src = readFile(arena, io, cfg.build_file) catch return 1;
             var parser = p.Parser.init(arena, gpa, src);
             const ast = parser.parseAll() catch return 1;
             
-            runner.runBuildRule(arena, gpa, io, ast, &args.config, &parser) catch return 1;
+            runner.runBuildRule(arena, gpa, io, ast, cfg, &parser) catch return 1;
         },
     }
 
@@ -50,7 +50,7 @@ pub fn main(init: std.process.Init) u8 {
 
 fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]const u8 {
     return std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), io, path, allocator, .unlimited) catch |e| {
-        logger.out(.err, "failed to read '{s}'", .{path});
+        logger.out(.err, "failed to read {s}'{s}'{s}", .{colors.get(.bold), path, colors.get(.reset)});
         return e;
     };
 }

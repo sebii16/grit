@@ -2,20 +2,20 @@ const builtin = @import("builtin");
 const std = @import("std");
 const runner = @import("runner.zig");
 const logger = @import("logger.zig");
-const globals = @import("globals.zig");
 const colors = @import("colors.zig");
+const config = @import("config.zig");
 
-pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []const u8, config: *const runner.Config) !void {
+pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []const u8, cfg: *const config.Config) !void {
     if (items.len == 0) return;
 
-    if (config.dry_run) {
+    if (cfg.dry_run) {
         for (items) |item| {
             logger.out(.info, "{s}", .{item});
         }
         return;
     }
 
-    const worker_count = @min(config.threads, items.len);
+    const worker_count = @min(cfg.threads, items.len);
 
     logger.out(.debug, "worker_count = {}", .{ worker_count });
 
@@ -51,11 +51,11 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
         for (workers[0..spawned], 0..) |*w, i| {
             w.await(io) catch |e| {
                 logger.outAdv(false, .info, null, "\n", .{});
-                logger.out(if (config.ignore_errors) .warning else .err, "command {s}'{s}'{s} failed{s}", .{
-                    colors.get(.bold), batch[i], colors.get(.reset), if (config.ignore_errors) "" else ". stopping"
+                logger.out(if (cfg.ignore_errors) .warning else .err, "command {s}'{s}'{s} failed{s}", .{
+                    colors.get(.bold), batch[i], colors.get(.reset), if (cfg.ignore_errors) "" else ". stopping"
                 });
 
-                if (!config.ignore_errors)
+                if (!cfg.ignore_errors)
                     return e;
             };
         } 

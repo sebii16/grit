@@ -4,7 +4,6 @@ const logger = @import("logger.zig");
 const util = @import("util.zig");
 const colors = @import("colors.zig");
 const parser = @import("parser.zig");
-const globals = @import("globals.zig");
 
 pub const Operator = enum {
     eq,     // ==
