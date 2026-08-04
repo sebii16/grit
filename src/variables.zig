@@ -47,7 +47,7 @@ pub const Vars = struct {
         try self.map.put("CWD", .{ .string = cwd });
         try self.map.put("GRIT_VER", .{ .version = globals.ver });
 
-        logger.out(.debug, "builtin variables added", .{});
+        logger.debug("builtin variables added", .{});
     }
 
     pub fn buildMap(allocator: std.mem.Allocator, io: std.Io, ast: []const parser.Ast) !@This() {
@@ -64,7 +64,7 @@ pub const Vars = struct {
                 .VarDecl => |v| {
                     if (self.map.contains(v.name)) {
                         // this error shouldn't be able to happen because parser avoids it
-                        logger.out(.debug, "ERROR: variable '{s}' redefined THIS IS A BUG AND SHOULD NEVER HAPPEN HERE", .{v.name});
+                        logger.debug("ERROR: variable '{s}' redefined THIS IS A BUG AND SHOULD NEVER HAPPEN HERE", .{v.name});
                     }
 
                     try self.map.put(v.name, .{ .string = v.value });
@@ -73,7 +73,7 @@ pub const Vars = struct {
             }
         }
 
-        logger.out(.debug, "all variables initialized", .{});
+        logger.debug("all variables initialized", .{});
 
         return self;
     }
@@ -169,15 +169,15 @@ pub fn getRuntimeVariable(name: []const u8, allocator: std.mem.Allocator) ![]con
 }
 
 fn reportBadVariable(full_input: []const u8, rule_name: []const u8, start: usize, end: usize, err: anyerror) anyerror {
-    logger.out(.syntax, "undefined or invalid variable in rule {s}'{s}'{s}:\n", .{ colors.get(.bold), rule_name, colors.get(.reset) });
+    logger.syntax(null, "undefined or invalid variable in rule {s}'{s}'{s}:\n", .{ colors.get(.bold), rule_name, colors.get(.reset) });
 
-    logger.out(.info, "{s}", .{full_input});
+    logger.info("{s}", .{full_input});
 
     if (start > 1) {
-        logger.outAdv(false, .info, null, "\x1b[{d}C", .{ start - 1});
+        logger.out(false, .info, null, "\x1b[{d}C", .{ start - 1});
     }
 
-    logger.out(.info, "{s}^{s}{s}", .{
+    logger.info("{s}^{s}{s}", .{
         colors.get(.red),
         ([_]u8{'~'} ** 128)[0..@min(end - start, 128)],
         colors.get(.reset) 

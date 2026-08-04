@@ -7,19 +7,21 @@ const colors = @import("colors.zig");
 const config = @import("config.zig");
 
 pub fn runBuildRule(arena: std.mem.Allocator, gpa: std.mem.Allocator, io: std.Io, ast: []const parser.Ast, cfg: *config.Config, prs: *const parser.Parser) !void {
-    const rule_name = cfg.rule_name orelse prs.default_rule orelse {
-        logger.out(.err, "no build rule selected", .{});
-        return error.InvalidRule;
-    };
+    if (cfg.rule == null) {
+        cfg.rule = prs.default_rule orelse {
+            logger.err("no build rule selected", .{});
+            return error.InvalidRule;
+        };
+    }
 
     for (ast) |node| {
         switch (node) {
             .RuleDecl => |rule| {
-                if (!std.mem.eql(u8, rule.name, rule_name)) continue;
+                if (!std.mem.eql(u8, rule.name, cfg.rule.?)) continue;
 
-                logger.out(.info, "executing build rule {s}'{s}'{s}{s}{s}{s}", .{
+                logger.info("executing build rule {s}'{s}'{s}{s}{s}{s}", .{
                     colors.get(.bold),
-                    rule_name,
+                    cfg.rule.?,
                     colors.get(.reset),
                     if (cfg.no_expand) " [no-expand]" else "",
                     if (cfg.dry_run) " [dry-run]" else "",
@@ -27,17 +29,21 @@ pub fn runBuildRule(arena: std.mem.Allocator, gpa: std.mem.Allocator, io: std.Io
                 });
 
                 const vars = variables.Vars.buildMap(arena, io, ast) catch |e| {
-                    logger.out(.err, "failed to build variable map", .{});
-                    logger.out(.debug, "{s}", .{@errorName(e)});
+                    logger.err("failed to build variable map", .{});
+                    logger.debug("{s}", .{@errorName(e)});
                     return e;
                 };
 
                 var batch: std.ArrayList([]const u8) = .empty;
+                var parallel = false;
 
-                try runSteps(arena, gpa, io, rule.steps, cfg, &vars, &batch, rule_name);
+                try runSteps(arena, gpa, io, rule.steps, cfg, &vars, &batch, &parallel);
 
                 if (batch.items.len > 0)
                     try scheduler.scheduleCommands(io, gpa, batch.items, cfg);
+
+                if (!scheduler.had_work)
+                    logger.info("nothing to do for build rule {s}'{s}'{s}", .{ colors.get(.bold), cfg.rule.?, colors.get(.reset) });
 
                 return;
             },
@@ -45,7 +51,7 @@ pub fn runBuildRule(arena: std.mem.Allocator, gpa: std.mem.Allocator, io: std.Io
         }
     }
 
-    logger.out(.err, "build rule {s}'{s}'{s} doesn't exist.", .{colors.get(.bold), rule_name, colors.get(.reset)});
+    logger.err("build rule {s}'{s}'{s} doesn't exist.", .{colors.get(.bold), cfg.rule.?, colors.get(.reset)});
     return error.InvalidRule;
 }
 
@@ -57,46 +63,35 @@ fn runSteps(
     cfg: *config.Config,
     vars: *const variables.Vars,
     batch: *std.ArrayList([]const u8),
-    rule: []const u8) !void {
+    parallel: *bool) !void {
 
     for (steps) |step| {
         switch (step) {
             .directive => |d| {
                 switch (d) {
                     .sequential => {
-                        if (cfg.parallel and batch.items.len > 0) {
+                        if (parallel.* and batch.items.len > 0) {
                             try scheduler.scheduleCommands(io, gpa, batch.items, cfg);
                             batch.clearRetainingCapacity();
                         }
-                        cfg.parallel = false;
+                        parallel.* = false;
                     },
-                    .parallel => cfg.parallel = true,
-                    //.@"if" => {},
+                    .parallel => parallel.* = true,
                     else => unreachable,
                 }
-                logger.out(.debug, "parallel = {}", .{ cfg.parallel });
+                logger.debug("parallel = {}", .{ parallel.* });
             },
             .cmd => |cmd| {
-                const expanded = if (!cfg.no_expand) try vars.expand(cmd, rule) else cmd;
+                const expanded = if (!cfg.no_expand) try vars.expand(cmd, cfg.rule.?) else cmd;
 
-                if (cfg.parallel)
+                if (parallel.*)
                     try batch.append(arena, expanded)
                 else 
                     try scheduler.scheduleCommands(io, gpa, &.{expanded}, cfg);
             },
             .if_block => |block| {
-                if (try block.selectBlock(gpa, vars)) |selected_steps| {
-                    if (selected_steps.len == 0) {
-                        logger.out(.info, "nothing to do for build rule {s}'{s}'{s}", .{
-                            colors.get(.bold),
-                            rule,
-                            colors.get(.reset)
-                        });
-                        return;
-                    }
-
-                    try runSteps(arena, gpa, io, selected_steps, cfg, vars, batch, rule);
-                }
+                if (try block.selectBlock(gpa, vars)) |selected_steps|
+                    try runSteps(arena, gpa, io, selected_steps, cfg, vars, batch, parallel);
             },
         }
     }

@@ -18,7 +18,7 @@ pub const default_build_file = "build.grit";
 pub const ver = std.SemanticVersion{
     .major = 0,
     .minor = 7,
-    .patch = 2
+    .patch = 4
 };
 
 pub const ver_str = std.fmt.comptimePrint("{d}.{d}.{d}", .{ ver.major, ver.minor, ver.patch });
@@ -41,9 +41,10 @@ pub const help_msg =
     \\Build flags:
     \\  -d, --dry-run       Print commands without executing them.
     \\  -f, --file FILE     Build file to use (default: build.grit).
-    //\\  -r, --rule RULE     Build rule to execute.
     \\  -t, --threads N     Max. number of threads (default: CPU core count).
-    \\      --ignore-errors Continue executing after a command fails.
+    \\  -e, --eval SRC      Execute SRC instead of reading a build file.          
+    \\  -i, --ignore-errors Treat execution errors as warnings.
+    \\  -q, --quiet         Only print errors.
     \\      --no-colors     Disable colored output.
     \\      --no-expand     Disable variable expansion.
     \\

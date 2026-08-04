@@ -25,10 +25,12 @@ const cli_options = [_]Option{
     .{ .long = "dry-run", .short = 'd', .effect = .{ .set_field = "dry_run" } },
     .{ .long = "no-expand", .effect = .{ .set_field = "no_expand" } },
     .{ .long = "threads", .short = 't', .effect = .{ .set_field = "threads" } },
-    .{ .long = "ignore-errors", .effect = .{ .set_field = "ignore_errors" } },
+    .{ .long = "ignore-errors", .short = 'i', .effect = .{ .set_field = "ignore_errors" } },
     .{ .long = "no-colors", .effect = .{ .set_field = "no_colors" } },
     .{ .long = "help", .short = 'h', .effect = .{ .set_action = .help } },
     .{ .long = "version", .short = 'v', .effect = .{ .set_action = .version } },
+    .{ .long = "eval", .short = 'e', .effect = .{ .set_field = "src" } },
+    .{ .long = "quiet", .short = 'q', .effect = .{ .set_field = "quiet" } },
 };
 
 pub fn parseArgs(args: []const []const u8, cfg: *config.Config) !Action {
@@ -41,19 +43,19 @@ pub fn parseArgs(args: []const []const u8, cfg: *config.Config) !Action {
         const option = findOption(arg) orelse {
             // if the first arg isnt an option treat it as a rule name
             if (i == 1 and arg[0] != '-') {
-                cfg.rule_name = arg;
+                cfg.rule = arg;
                 continue;
             } else {
-                logger.out(.err, "unknown flag {s}'{s}'{s}", .{colors.get(.bold), arg, colors.get(.reset)});
+                logger.err("unknown flag {s}'{s}'{s}", .{colors.get(.bold), arg, colors.get(.reset)});
                 return error.UnknownFlag;
             }
         };
 
         switch (option.effect) {
             .set_action => |action| {
-                if (cfg.rule_name != null) {
+                if (cfg.rule != null) {
                     // dont allow --help and --version after a rule has been provided
-                    logger.out(.err, "flag {s}'{s}'{s} is not allowed after declaring a rule", .{colors.get(.bold), arg, colors.get(.reset)});
+                    logger.err("flag {s}'{s}'{s} is not allowed after specifying a build rule", .{colors.get(.bold), arg, colors.get(.reset)});
                     return error.InvalidActionFlag;
                 }
                 return action;
@@ -99,7 +101,7 @@ fn parseField(cfg: *config.Config, comptime field: std.builtin.Type.StructField,
         .int => {
             const value = try getValue(index, args);
             field_value.* = std.fmt.parseInt(field.type, value, 10) catch {
-                logger.out(.err, "'{s}' is not a valid number", .{value});
+                logger.err("{s}'{s}'{s} is not a valid number", .{ colors.get(.bold), value, colors.get(.reset) });
                 return error.InvalidNumber;
             };
         },
@@ -125,7 +127,7 @@ fn getValue(pos: *usize, args: []const []const u8) ![]const u8 {
     const flag = args[pos.*];
 
     if (pos.* + 1 >= args.len) {
-        logger.out(.err, "expected a value after flag {s}'{s}'{s}", .{colors.get(.bold), flag, colors.get(.reset)});
+        logger.err("expected a value after flag {s}'{s}'{s}", .{colors.get(.bold), flag, colors.get(.reset)});
         return error.FlagMissingValue;
     }
 

@@ -13,6 +13,7 @@ clean {
 
 @default
 debug {
+    @sequential
     @if OS == "windows" {
         "zig build-exe $FILES -femit-bin=$OUT-d.exe $DEBUG_FLAGS"
     } @elif OS == "linux" {
@@ -38,17 +39,4 @@ install {
 }
 
 test {
-    @parallel
-    "echo test"
-
-    "echo test"
-    "echo test"
-    "echo test"
-    "echo test"
-    "echo test"
-    "echo test"
-    "echo test"
-    "echo test"
-    "echo test"
-    "echo test"
 }

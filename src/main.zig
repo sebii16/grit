@@ -24,20 +24,20 @@ pub fn main(init: std.process.Init) u8 {
     // validate thread count
     if (cfg.threads == 0) {
         cfg.threads = std.Thread.getCpuCount() catch 1;
-        logger.out(.warning, "thread count of 0 ignored, using default: {d}", .{cfg.threads});
+        logger.warning("thread count of 0 ignored, using default: {d}", .{cfg.threads});
     }
     
-    defer logger.out(.debug, "arena: {} bytes allocated", .{init.arena.queryCapacity()});
+    defer logger.debug("arena: {} bytes allocated", .{init.arena.queryCapacity()});
 
     switch (action) {
         .help => {
-            logger.out(.info, "{s}", .{ globals.help_msg });
+            logger.info("{s}", .{ globals.help_msg });
         },
         .version => {
-            logger.out(.info, "{s}", .{ globals.ver_msg });
+            logger.info("{s}", .{ globals.ver_msg });
         },
         .run => {
-            const src = readFile(arena, io, cfg.build_file) catch return 1;
+            const src = cfg.src orelse readFile(arena, io, cfg.build_file) catch return 1;
             var parser = p.Parser.init(arena, gpa, src);
             const ast = parser.parseAll() catch return 1;
             
@@ -50,7 +50,7 @@ pub fn main(init: std.process.Init) u8 {
 
 fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]const u8 {
     return std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), io, path, allocator, .unlimited) catch |e| {
-        logger.out(.err, "failed to read {s}'{s}'{s}", .{colors.get(.bold), path, colors.get(.reset)});
+        logger.err("failed to read {s}'{s}'{s}", .{colors.get(.bold), path, colors.get(.reset)});
         return e;
     };
 }

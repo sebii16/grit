@@ -37,19 +37,18 @@ pub const IfBlock = struct {
 
         while (current) |block| : (current = block.next) {
             if (block.condition == null) {
-                logger.out(.debug, "true", .{});
+                logger.debug("true", .{});
                 return block.steps;
             }
 
-            var buf: [5]u8 = undefined;
-            logger.out(.debug, "evaluating condition: {s} {s} {s}", .{block.condition.?.lhs, block.condition.?.op.asString(&buf), block.condition.?.rhs});
+            logger.debug("evaluating condition: {s} {} {s} = ", .{block.condition.?.lhs, block.condition.?.op, block.condition.?.rhs});
 
             if (try block.condition.?.evaluate(gpa, vars)) {
-                logger.out(.debug, "true", .{});
+                logger.debug("true", .{});
                 return block.steps;
             }
 
-            logger.out(.debug, "false", .{});
+            logger.debug("false", .{});
         }
 
         return null;
@@ -87,7 +86,7 @@ pub const Condition = struct {
             defer if (allocated_value) |av| {
                 switch (av) {
                     .string => {
-                        logger.out(.debug, "free {s}", .{av.string});
+                        logger.debug("free {s}", .{av.string});
                         gpa.free(av.string);
                     },
                     else => unreachable,
@@ -103,7 +102,7 @@ pub const Condition = struct {
             return switch (value) {
                 .string => |s| blk: {
                     if (!self.right_is_string) {
-                        logger.syntaxError(
+                        logger.syntax(
                             self.line,
                             "expected a string, got identifier {s}'{s}'{s}. did you mean {s}\"{s}\"{s}?",
                             .{colors.get(.bold), self.rhs, colors.get(.reset), colors.get(.bold), self.rhs, colors.get(.reset)}
@@ -118,7 +117,7 @@ pub const Condition = struct {
                 switch (err) {
                     error.WrongOperator => {
                         var buf: [2]u8 = undefined;
-                        logger.syntaxError(
+                        logger.syntax(
                             self.line,
                             "invalid operator {s}'{s}'{s} for variable {s}'{s}'{s} of underlying type {s}'{s}'{s}",
                             .{
@@ -140,14 +139,14 @@ pub const Condition = struct {
             };
         }
 
-        logger.syntaxError(self.line, "'{s}' is undefined", .{self.lhs});
+        logger.syntax(self.line, "'{s}' is undefined", .{self.lhs});
 
         return error.IfStatementError;
     }
 
     fn compareBool(self: *const @This(), lhs: bool) !bool {
         const rhs_parsed = util.parseBool(self.rhs) catch |e| {
-            logger.syntaxError(self.line, "'{s}' is not a valid boolean", .{self.rhs});
+            logger.syntax(self.line, "'{s}' is not a valid boolean", .{self.rhs});
             return e;
         };
 
@@ -160,7 +159,7 @@ pub const Condition = struct {
 
     fn compareVersion(self: *const @This(), lhs: std.SemanticVersion) !bool {
         const rhs_ver = std.SemanticVersion.parse(self.rhs) catch |e| {
-            logger.syntaxError(self.line, "'{s}' is not a valid version", .{self.rhs});
+            logger.syntax(self.line, "'{s}' is not a valid version", .{self.rhs});
             return e;
         };
 

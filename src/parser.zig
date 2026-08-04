@@ -64,7 +64,7 @@ pub const Parser = struct {
         defer {
             self.rule_names.deinit();
             self.variable_names.deinit();
-            logger.out(.debug, "cleanup rule and variable hashmaps", .{});
+            logger.debug("cleanup rule and variable hashmaps", .{});
         }
 
         var nodes: std.ArrayList(Ast) = .empty;
@@ -101,12 +101,10 @@ pub const Parser = struct {
     fn checkDuplicate(self: *@This(), name: []const u8, decl_type: enum {variable, rule}) !void {
         inline for (variables.builtin_variables) |v| {
             if (std.mem.eql(u8, v, name)) {
-                logger.syntaxError(
-                    self.lexer.line,
+                return self.syntaxError(
                     "redefininition of builtin variable {s}'{s}'{s} is not allowed",
                     .{colors.get(.bold), name, colors.get(.reset)}
                 );
-                return error.DuplicateVariable;
             }
         }
 
@@ -116,12 +114,10 @@ pub const Parser = struct {
         }).getOrPut(name);
 
         if (res.found_existing) {
-            logger.syntaxError(
-                self.lexer.line,
+            return self.syntaxError(
                 "{s} {s}'{s}'{s} redefined: first definition on line {d}",
                 .{@tagName(decl_type), colors.get(.bold), name, colors.get(.reset), res.value_ptr.*}
             );
-            return error.DuplicateDeclaration;
         }
 
         res.value_ptr.* = self.lexer.line;
@@ -316,7 +312,7 @@ pub const Parser = struct {
     }
 
     inline fn syntaxError(self: *const Parser, comptime fmt: []const u8, args: anytype) error{SyntaxError} {
-        logger.syntaxError(self.lexer.line, fmt, args);
+        logger.syntax(self.lexer.line, fmt, args);
         return error.SyntaxError;
     }
 

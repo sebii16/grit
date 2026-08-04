@@ -5,19 +5,24 @@ const logger = @import("logger.zig");
 const colors = @import("colors.zig");
 const config = @import("config.zig");
 
+pub var had_work = false;
+
 pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []const u8, cfg: *const config.Config) !void {
     if (items.len == 0) return;
 
+    if (!had_work)
+        had_work = true;
+
     if (cfg.dry_run) {
-        for (items) |item| {
-            logger.out(.info, "{s}", .{item});
+        for (items) |cmd| {
+            logger.info("{s}", .{ cmd });
         }
         return;
     }
 
     const worker_count = @min(cfg.threads, items.len);
 
-    logger.out(.debug, "worker_count = {}", .{ worker_count });
+    logger.debug("worker_count = {}", .{ worker_count });
 
     const worker_type = std.Io.Future(@typeInfo(@TypeOf(worker)).@"fn".return_type.?);
     const workers = try gpa.alloc(worker_type, worker_count);
@@ -29,7 +34,7 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
             _ = w.cancel(io) catch {};
         }
         defer gpa.free(workers);
-        logger.out(.debug, "all async workers cleaned up", .{});
+        logger.debug("all async workers cleaned up", .{});
     }
 
     var index: usize = 0;
@@ -50,8 +55,8 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
 
         for (workers[0..spawned], 0..) |*w, i| {
             w.await(io) catch |e| {
-                logger.outAdv(false, .info, null, "\n", .{});
-                logger.out(if (cfg.ignore_errors) .warning else .err, "command {s}'{s}'{s} failed{s}", .{
+                std.debug.print("\n", .{});
+                logger.out(true, if (cfg.ignore_errors) .warning else .err, null, "command {s}'{s}'{s} failed{s}", .{
                     colors.get(.bold), batch[i], colors.get(.reset), if (cfg.ignore_errors) "" else ". stopping"
                 });
 
@@ -67,9 +72,9 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
 
 fn worker(gpa: std.mem.Allocator, io: std.Io, cmd: []const u8, parallel: bool) !void {
     if (parallel)
-        logger.outLocked(io, .info, "{s}", .{cmd})
+        logger.outLocked(io, .info, "{s}", .{ cmd })
     else
-        logger.out(.info, "{s}", .{cmd});
+        logger.info("{s}", .{ cmd });
 
     const os = builtin.target.os.tag;
 
@@ -96,5 +101,4 @@ fn worker(gpa: std.mem.Allocator, io: std.Io, cmd: []const u8, parallel: bool) !
         .exited => |code| if (code != 0) error.CommandFailed,
         else => error.CommandFailed,
     };
-
 }

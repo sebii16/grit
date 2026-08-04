@@ -113,13 +113,15 @@ Build flags:
   -d, --dry-run       Print commands without executing them.
   -f, --file FILE     Build file to use (default: build.grit).
   -t, --threads N     Max. number of threads (default: CPU core count).
-      --ignore-errors Continue executing after a command fails.
+  -e, --eval SRC      Execute SRC instead of reading a build file.          
+  -i, --ignore-errors Treat execution errors as warnings.
+  -q, --quiet         Only print errors.
       --no-colors     Disable colored output.
       --no-expand     Disable variable expansion.
-
-Global flags:
+    
+Global flags: 
   -h, --help          Show this help message.
-  -v, --version       Show version and license information.
+  -v, --version       Show version and license information.  
 ```
 
 ## Built-in Variables

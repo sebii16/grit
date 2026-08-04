@@ -64,7 +64,7 @@ pub const Lexer = struct {
                     if (std.ascii.isAlphanumeric(c) or c == '_') {
                         return self.makeIdentToken();
                     } else {
-                        logger.syntaxError(self.line, "unexpected {s}", .{
+                        logger.syntax(self.line, "unexpected {s}", .{
                             if (c > 127) "non-ASCII character" else "character '" ++ [_]u8{c} ++ "'"
                         });
                         return error.UnexpectedCharacter;
@@ -153,7 +153,7 @@ pub const Lexer = struct {
             }
         }
 
-        logger.syntaxError(self.line, "unterminated string", .{});
+        logger.syntax(self.line, "unterminated string", .{});
         return error.UnterminatedString;
     }
 };
