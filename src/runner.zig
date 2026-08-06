@@ -90,7 +90,7 @@ fn runSteps(
                     try scheduler.scheduleCommands(io, gpa, &.{expanded}, cfg);
             },
             .if_block => |block| {
-                if (try block.selectBlock(gpa, vars)) |selected_steps|
+                if (try block.selectBlock(vars)) |selected_steps|
                     try runSteps(arena, gpa, io, selected_steps, cfg, vars, batch, parallel);
             },
         }

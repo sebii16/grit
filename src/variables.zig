@@ -22,7 +22,7 @@ pub const Value = union(enum) {
     }
 };
 
-pub const VarMap = std.StringHashMap(?Value);
+pub const VarMap = std.StringHashMap(Value);
 
 pub const builtin_variables = [_][]const u8 {
     "OS",
@@ -135,13 +135,7 @@ pub const Vars = struct {
     }
 
     pub fn getVariable(self: *const @This(), name: []const u8) !Value {
-        const value = self.map.get(name) orelse return error.InvalidVariable;
-
-        if (value) |res| {
-            return res;
-        }
-
-        return .{ .string = try getRuntimeVariable(name, globals.arena) };
+        return self.map.get(name) orelse Value{ .string = getRuntimeVariable(name, self.allocator) catch return error.InvalidVariable };
     }
 };
 

@@ -32,23 +32,17 @@ pub const IfBlock = struct {
     steps: []parser.Step,
     next: ?*IfBlock = null,
 
-    pub fn selectBlock(self: *const @This(), gpa: std.mem.Allocator, vars: *const variables.Vars) !?[]const parser.Step {
+    pub fn selectBlock(self: *const @This(), vars: *const variables.Vars) !?[]const parser.Step {
         var current: ?*const @This() = self;
 
         while (current) |block| : (current = block.next) {
             if (block.condition == null) {
-                logger.debug("true", .{});
                 return block.steps;
             }
 
-            logger.debug("evaluating condition: {s} {} {s} = ", .{block.condition.?.lhs, block.condition.?.op, block.condition.?.rhs});
-
-            if (try block.condition.?.evaluate(gpa, vars)) {
-                logger.debug("true", .{});
+            if (try block.condition.?.evaluate(vars)) {
                 return block.steps;
             }
-
-            logger.debug("false", .{});
         }
 
         return null;
@@ -74,74 +68,53 @@ pub const Condition = struct {
         };
     }
 
-    pub fn evaluate(self: *const @This(), gpa: std.mem.Allocator, vars: *const variables.Vars) !bool { 
+    pub fn evaluate(self: *const @This(), vars: *const variables.Vars) !bool { 
         if (self.result) |res|
             return res;
 
-        for (variables.builtin_variables) |variable| {
-            if (!std.mem.eql(u8, variable, self.lhs))
-                continue;
+        const value = variables.Vars.getVariable(vars, self.lhs) catch {
+            logger.syntax(self.line, "'{s}' is undefined", .{self.lhs});
+            return error.UndefinedVariable;
+        };
 
-            var allocated_value: ?variables.Value = null;
-            defer if (allocated_value) |av| {
-                switch (av) {
-                    .string => {
-                        logger.debug("free {s}", .{av.string});
-                        gpa.free(av.string);
-                    },
-                    else => unreachable,
+        return switch (value) {
+            .string => |s| blk: {
+                if (!self.right_is_string) {
+                    logger.syntax(
+                        self.line,
+                        "expected a string, got identifier {s}'{s}'{s}. did you mean {s}\"{s}\"{s}?",
+                        .{colors.get(.bold), self.rhs, colors.get(.reset), colors.get(.bold), self.rhs, colors.get(.reset)}
+                    );
+                    return error.TypeMismatch;
                 }
-            };
-
-            const value = variables.Vars.getVariable(vars, variable) catch blk: {
-                const resolved = variables.Value{.string = variables.getRuntimeVariable(variable, gpa) catch break };
-                allocated_value = resolved;
-                break :blk resolved;
-            };
-
-            return switch (value) {
-                .string => |s| blk: {
-                    if (!self.right_is_string) {
-                        logger.syntax(
-                            self.line,
-                            "expected a string, got identifier {s}'{s}'{s}. did you mean {s}\"{s}\"{s}?",
-                            .{colors.get(.bold), self.rhs, colors.get(.reset), colors.get(.bold), self.rhs, colors.get(.reset)}
-                        );
-                        return error.TypeMismatch;
-                    }
-                    break :blk compareString(s, self.op, self.rhs);
+                break :blk compareString(s, self.op, self.rhs);
+            },
+            .version => |ver| self.compareVersion(ver),
+            .boolean => |b| self.compareBool(b),
+        } catch |err| {
+            switch (err) {
+                error.WrongOperator => {
+                    var buf: [2]u8 = undefined;
+                    logger.syntax(
+                        self.line,
+                        "invalid operator {s}'{s}'{s} for variable {s}'{s}'{s} of underlying type {s}'{s}'{s}",
+                        .{
+                            colors.get(.bold),
+                            self.op.asString(&buf),
+                            colors.get(.reset),
+                            colors.get(.bold),
+                            self.lhs,
+                            colors.get(.reset),
+                            colors.get(.bold),
+                            @tagName(std.meta.activeTag(value)),
+                            colors.get(.reset),
+                        }
+                    );
                 },
-                .version => |ver| self.compareVersion(ver),
-                .boolean => |b| self.compareBool(b),
-            } catch |err| {
-                switch (err) {
-                    error.WrongOperator => {
-                        var buf: [2]u8 = undefined;
-                        logger.syntax(
-                            self.line,
-                            "invalid operator {s}'{s}'{s} for variable {s}'{s}'{s} of underlying type {s}'{s}'{s}",
-                            .{
-                                colors.get(.bold),
-                                self.op.asString(&buf),
-                                colors.get(.reset),
-                                colors.get(.bold),
-                                self.lhs,
-                                colors.get(.reset),
-                                colors.get(.bold),
-                                @tagName(std.meta.activeTag(value)),
-                                colors.get(.reset),
-                            }
-                        );
-                    },
-                    else => {},
-                }
-                return err;
-            };
-        }
-
-        logger.syntax(self.line, "'{s}' is undefined", .{self.lhs});
-
-        return error.IfStatementError;
+                else => {},
+            }
+            return err;
+        };
     }
 
     fn compareBool(self: *const @This(), lhs: bool) !bool {

@@ -7,7 +7,6 @@ pub const Config = struct {
     dry_run: bool = false,
     no_expand: bool = false,
     threads: usize = 1,
- //   parallel: bool = false,
     rule: ?[]const u8 = null,
     ignore_errors: bool = false,
     no_colors: bool = false,

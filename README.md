@@ -12,7 +12,7 @@
 
 ```sh
 git clone https://github.com/sebii16/grit-build-tool
-cd grit
+cd grit-build-tool
 zig build-exe src/main.zig -O ReleaseFast -lc
 ```
 > [!IMPORTANT]
@@ -77,7 +77,7 @@ build {
     } @elif OS == "linux" {
         "zig build-exe $SRC -femit-bin=$OUT $FLAGS"
     } @else {
-        print "OS not supported"
+        "echo OS not supported"
     }
 }
 ```

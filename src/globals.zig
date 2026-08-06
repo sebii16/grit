@@ -18,7 +18,7 @@ pub const default_build_file = "build.grit";
 pub const ver = std.SemanticVersion{
     .major = 0,
     .minor = 7,
-    .patch = 4
+    .patch = 5
 };
 
 pub const ver_str = std.fmt.comptimePrint("{d}.{d}.{d}", .{ ver.major, ver.minor, ver.patch });

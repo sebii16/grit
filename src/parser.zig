@@ -102,7 +102,7 @@ pub const Parser = struct {
         inline for (variables.builtin_variables) |v| {
             if (std.mem.eql(u8, v, name)) {
                 return self.syntaxError(
-                    "redefininition of builtin variable {s}'{s}'{s} is not allowed",
+                    "redefinition of builtin variable {s}'{s}'{s} is not allowed",
                     .{colors.get(.bold), name, colors.get(.reset)}
                 );
             }
@@ -266,7 +266,7 @@ pub const Parser = struct {
                     .TOK_LTE => .lte,
                     .TOK_GT => .gt,
                     .TOK_GTE => .gte,
-                    else => return self.syntaxError("expected comparision operator got '{s}' ({s})", .{@tagName(self.curr.type), self.curr.value})
+                    else => return self.syntaxError("expected comparison operator got '{s}' ({s})", .{@tagName(self.curr.type), self.curr.value})
                 };
 
                 try self.nextToken();
