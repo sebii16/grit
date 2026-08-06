@@ -1,10 +1,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const globals = @import("globals.zig");
 const colors = @import("colors.zig");
 const config = @import("config.zig");
 
-pub fn init(cfg: *config.Config, io: std.Io, env: *std.process.Environ.Map) void {
+var io: std.Io = undefined;
+
+pub fn init(cfg: *config.Config, io_: std.Io, env: *std.process.Environ.Map) void {
+    io = io_;
+
     const stdout = std.Io.File.stdout();
     const is_tty = stdout.isTty(io) catch false;
     const term_env = env.get("TERM");
@@ -16,6 +19,7 @@ pub fn init(cfg: *config.Config, io: std.Io, env: *std.process.Environ.Map) void
 }
 
 const LogLevel = enum {
+    none,
     info,
     debug,
     warning,
@@ -46,7 +50,7 @@ pub fn syntax(line: ?u32, comptime fmt: []const u8, args: anytype) void {
 
 pub var log_mutex: std.Io.Mutex = .init;
 
-pub fn outLocked(io: std.Io, level: LogLevel, comptime fmt: []const u8, args: anytype) void {
+pub fn outLocked(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
     log_mutex.lock(io) catch return;
     defer log_mutex.unlock(io);
     out(true, level, null, fmt, args);
@@ -55,8 +59,8 @@ pub fn outLocked(io: std.Io, level: LogLevel, comptime fmt: []const u8, args: an
 pub fn out(nl: bool, level: LogLevel, line: ?u32, comptime fmt: []const u8, args: anytype) void {
     if (level != .err and config.Config.current.quiet) return;
     
-    var stdout_writer = std.Io.File.stdout().writer(globals.io, &.{});
-    var stderr_writer = std.Io.File.stderr().writer(globals.io, &.{});
+    var stdout_writer = std.Io.File.stdout().writer(io, &.{});
+    var stderr_writer = std.Io.File.stderr().writer(io, &.{});
     
     var output = switch (level) {
         .err, .warning => &stderr_writer.interface,
@@ -64,7 +68,8 @@ pub fn out(nl: bool, level: LogLevel, line: ?u32, comptime fmt: []const u8, args
     };
 
     const prefix = switch (level) {
-        .info => "",
+        .none => "",
+        .info => "[info] ",
         .debug => "[debug] ",
         .warning => "warning: ",
         .err => "error: ",
@@ -72,7 +77,8 @@ pub fn out(nl: bool, level: LogLevel, line: ?u32, comptime fmt: []const u8, args
     };
 
     const color_code = switch (level) {
-        .info => "",
+        .none => "",
+        .info => colors.get(.green_bold),
         .warning => colors.get(.yellow_bold),
         .err, .syntax => colors.get(.red_bold),
         .debug => colors.get(.magenta_bold)

@@ -2,6 +2,7 @@ const std = @import("std");
 const logger = @import("logger.zig");
 const config = @import("config.zig");
 const colors = @import("colors.zig");
+const util = @import("util.zig");
 
 pub const Action = enum {
     help,
@@ -31,9 +32,10 @@ const cli_options = [_]Option{
     .{ .long = "version", .short = 'v', .effect = .{ .set_action = .version } },
     .{ .long = "eval", .short = 'e', .effect = .{ .set_field = "src" } },
     .{ .long = "quiet", .short = 'q', .effect = .{ .set_field = "quiet" } },
+    .{ .long = "shell", .short = 's', .effect = .{ .set_field = "shell" } },
 };
 
-pub fn parseArgs(args: []const []const u8, cfg: *config.Config) !Action {
+pub fn parseArgs(arena: std.mem.Allocator, args: []const []const u8, cfg: *config.Config) !Action {
     // start after executable name
     var i: usize = 1;
 
@@ -63,7 +65,7 @@ pub fn parseArgs(args: []const []const u8, cfg: *config.Config) !Action {
             .set_field => |field| {
                 inline for (@typeInfo(@TypeOf(cfg.*)).@"struct".fields) |struct_field| {
                     if (std.mem.eql(u8, field, struct_field.name)) 
-                        try parseField(cfg, struct_field, args, &i);
+                        try parseField(arena, cfg, struct_field, args, &i);
                 }
             }
         }
@@ -91,7 +93,7 @@ fn findOption(arg: []const u8) ?Option {
     return null;
 }
 
-fn parseField(cfg: *config.Config, comptime field: std.builtin.Type.StructField, args: []const []const u8, index: *usize) !void {
+fn parseField(arena: std.mem.Allocator, cfg: *config.Config, comptime field: std.builtin.Type.StructField, args: []const []const u8, index: *usize) !void {
     const field_value = &@field(cfg, field.name);
 
     switch (@typeInfo(field.type)) {
@@ -115,8 +117,32 @@ fn parseField(cfg: *config.Config, comptime field: std.builtin.Type.StructField,
         .pointer => |pointer| {
             if (pointer.size == .slice and pointer.child == u8) {
                 field_value.* = try getValue(index, args);
+            } else if (pointer.size == .slice and pointer.child == []const u8) {
+                const value = try getValue(index, args);
+
+                field_value.* = try util.splitString(arena, value, ' ');
             } else {
                 @compileError("unhandled type: " ++ @typeName(field.type));
+            }
+        },
+        .@"union" => {
+            if (field.type == config.ThreadCount) {
+                const value = try getValue(index, args);
+
+                const n = std.fmt.parseUnsigned(usize, value, 10) catch {
+                    logger.err("'{s}' is not a valid thread count", .{value});
+                    return error.InvalidNumber;
+                };
+
+                if (n == 0) {
+                    logger.warning("thread count of 0 ignored", .{});
+                    field_value.* = .auto;
+                    return;
+                }
+
+                field_value.* = .{ .count = n };
+            } else {
+                @compileError("unhandled union type: " ++ @typeName(field.type));
             }
         },
         else => @compileError("unhandled type: " ++ @typeName(field.type)),

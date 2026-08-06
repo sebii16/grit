@@ -10,6 +10,8 @@ const Colors = enum {
     yellow_bold,
     magenta,
     magenta_bold,
+    green,
+    green_bold,
 
     const codes = struct {
         const reset = "\x1b[0m";
@@ -20,6 +22,8 @@ const Colors = enum {
         const yellow_bold = yellow ++ bold;
         const magenta = "\x1b[35m";
         const magenta_bold = magenta ++ bold;
+        const green = "\x1b[32m";
+        const green_bold = green ++ bold;
     };
 };
 

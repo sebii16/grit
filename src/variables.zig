@@ -165,14 +165,18 @@ pub fn getRuntimeVariable(name: []const u8, allocator: std.mem.Allocator) ![]con
 fn reportBadVariable(full_input: []const u8, task_name: []const u8, start: usize, end: usize, err: anyerror) anyerror {
     logger.syntax(null, "undefined or invalid variable in task {s}'{s}'{s}:\n", .{ colors.get(.bold), task_name, colors.get(.reset) });
 
-    logger.info("{s}", .{full_input});
+    const start_input = full_input[0..start - 1];
+    const variable = full_input[start - 1..end];
+    const rest_input = full_input[end..];
+
+    logger.out(true, .none, null, "{s}{s}{s}{s}{s}", .{start_input, colors.get(.red_bold), variable, colors.get(.reset), rest_input});
 
     if (start > 1) {
-        logger.out(false, .info, null, "\x1b[{d}C", .{ start - 1});
+        logger.out(false, .none, null, "\x1b[{d}C", .{ start - 1});
     }
 
-    logger.info("{s}^{s}{s}", .{
-        colors.get(.red),
+    logger.out(true, .none, null, "{s}^{s}{s}", .{
+        colors.get(.red_bold),
         ([_]u8{'~'} ** 128)[0..@min(end - start, 128)],
         colors.get(.reset) 
     });

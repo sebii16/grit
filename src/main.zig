@@ -7,37 +7,36 @@ const logger = @import("logger.zig");
 const globals = @import("globals.zig");
 const config = @import("config.zig");
 const colors = @import("colors.zig");
+const util = @import("util.zig");
 
 pub fn main(init: std.process.Init) u8 {
     const arena = init.arena.allocator();
     const gpa = init.gpa;
     const io = init.io;
 
-    globals.init(arena, gpa, io);
-
     const cfg = &config.Config.current;
     logger.init(cfg, io, init.environ_map);
 
     const args = init.minimal.args.toSlice(arena) catch return 1;
-    const action = cli.parseArgs(args, cfg) catch return 1;
-
-    // validate thread count
-    if (cfg.threads == 0) {
-        cfg.threads = std.Thread.getCpuCount() catch 1;
-        logger.warning("thread count of 0 ignored, using default: {d}", .{cfg.threads});
-    }
+    const action = cli.parseArgs(arena, args, cfg) catch return 1;
     
     defer logger.debug("arena: {} bytes allocated", .{init.arena.queryCapacity()});
 
     switch (action) {
         .help => {
-            logger.info("{s}", .{ globals.help_msg });
+            logger.out(true, .none, null, "{s}", .{ globals.help_msg });
         },
         .version => {
-            logger.info("{s}", .{ globals.ver_msg });
+            logger.out(true, .none, null, "{s}", .{ globals.ver_msg });
         },
         .run => {
-            const src = cfg.src orelse readFile(arena, io, cfg.file) catch return 1;
+            const src = blk: {
+                if (cfg.src) |src| {
+                    cfg.file = "<eval>";
+                    break :blk src;
+                }
+                break :blk util.readFile(arena, io, cfg.file) catch return 1;
+            };
             var parser = p.Parser.init(arena, gpa, src);
             const ast = parser.parseAll() catch return 1;
             
@@ -48,9 +47,3 @@ pub fn main(init: std.process.Init) u8 {
     return 0;
 }
 
-fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]const u8 {
-    return std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), io, path, allocator, .unlimited) catch |e| {
-        logger.err("failed to read {s}'{s}'{s}", .{colors.get(.bold), path, colors.get(.reset)});
-        return e;
-    };
-}

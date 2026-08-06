@@ -28,13 +28,17 @@ pub fn runTask(arena: std.mem.Allocator, gpa: std.mem.Allocator, io: std.Io, ast
                 var batch: std.ArrayList([]const u8) = .empty;
                 var parallel = false;
 
+                logger.info("selected task: {s}'{s}'{s}", .{colors.get(.bold), cfg.task.?, colors.get(.reset)});
+
                 try runSteps(arena, gpa, io, task.steps, cfg, &vars, &batch, &parallel);
 
                 if (batch.items.len > 0)
                     try scheduler.scheduleCommands(io, gpa, batch.items, cfg);
 
                 if (!scheduler.had_work)
-                    logger.info("nothing to do for task {s}'{s}'{s}", .{ colors.get(.bold), cfg.task.?, colors.get(.reset) });
+                    logger.info("nothing to do for task {s}'{s}'{s}", .{ colors.get(.bold), cfg.task.?, colors.get(.reset) })
+                else
+                    logger.info("all done", .{});
 
                 return;
             },

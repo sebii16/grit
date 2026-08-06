@@ -13,7 +13,6 @@ clean {
 
 @default
 debug {
-    @sequential
     @if OS == "windows" {
         "zig build-exe $FILES -femit-bin=$OUT-d.exe $DEBUG_FLAGS"
     } @elif OS == "linux" {
@@ -21,7 +20,7 @@ debug {
     }
 }
 
-release {
+rel {
     @if OS == "windows" {
         "zig build-exe $FILES -femit-bin=$OUT.exe $RELEASE_FLAGS"
     } @elif OS == "linux" {
@@ -34,6 +33,6 @@ install {
     "copy $OUT.exe c:\grit"
     "copy LICENSE c:\grit"
   } @elif OS == "linux" {
-    "sudo mv grit /usr/bin/grit"
+    "sudo install -m 755 grit /usr/local/bin/grit"
   }
 }

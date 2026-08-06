@@ -3,4 +3,4 @@ grit-d
 *.exe
 *.pdb
 *.lnk
-commands.zig
+tests/

@@ -3,22 +3,12 @@ const builtin = @import("builtin");
 const os = @tagName(builtin.target.os.tag);
 const arch = @tagName(builtin.target.cpu.arch);
 
-pub var arena: std.mem.Allocator = undefined;
-pub var gpa: std.mem.Allocator = undefined;
-pub var io: std.Io = undefined;
-
-pub fn init(arena_: std.mem.Allocator, gpa_: std.mem.Allocator, io_: std.Io) void {
-    arena = arena_;
-    gpa = gpa_;
-    io = io_;
-}
-
 pub const default_file = "gritfile";
 
 pub const ver = std.SemanticVersion{
     .major = 0,
-    .minor = 7,
-    .patch = 5
+    .minor = 8,
+    .patch = 0
 };
 
 pub const ver_str = std.fmt.comptimePrint("{d}.{d}.{d}", .{ ver.major, ver.minor, ver.patch });
@@ -41,11 +31,12 @@ pub const help_msg =
     \\  -h, --help          Show this help message and exit.
     \\  -v, --version       Show version, license information and exit.
     \\  -d, --dry-run       Print commands without executing them.
-    \\  -f, --file FILE     Task file to use (default: gritfile).
-    \\  -t, --threads N     Max. number of threads (default: CPU core count).
+    \\  -f, --file FILE     Override file to read from (default: gritfile).
+    \\  -t, --threads NUM   Override the max. number of threads (default: CPU core count).
     \\  -e, --eval SRC      Execute SRC instead of reading from a file.          
     \\  -i, --ignore-errors Treat execution errors as warnings.
     \\  -q, --quiet         Only print errors.
+    \\  -s, --shell SHELL   Set the shell used to execute commands (e.g. -s "powershell.exe -c").
     \\      --no-colors     Disable colored output.
     \\      --no-expand     Disable variable expansion.
     ;

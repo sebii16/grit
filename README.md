@@ -110,16 +110,17 @@ grit release -t 4
 
 ```text
 Flags:
-  -h, --help          Show this help message and exit.
-  -v, --version       Show version, license information and exit.
-  -d, --dry-run       Print commands without executing them.
-  -f, --file FILE     Task file to use (default: gritfile).
-  -t, --threads N     Max. number of threads (default: CPU core count).
-  -e, --eval SRC      Execute SRC instead of reading from a file.          
-  -i, --ignore-errors Treat execution errors as warnings.
-  -q, --quiet         Only print errors.
-      --no-colors     Disable colored output.
-      --no-expand     Disable variable expansion.
+  -h, --help            Show this help message and exit.
+  -v, --version         Show version, license information and exit.
+  -d, --dry-run         Print commands without executing them.
+  -f, --file FILE       Override file to read from (default: gritfile).
+  -t, --threads NUM     Override the max. number of threads (default: CPU core count).
+  -e, --eval SRC        Execute SRC instead of reading from a file.
+  -i, --ignore-errors   Treat execution errors as warnings.
+  -q, --quiet           Only print errors.
+  -s, --shell SHELL     Set the shell used to execute commands (e.g. -s "powershell.exe -c").
+      --no-colors       Disable colored output.
+      --no-expand       Disable variable expansion.
 ```
 
 ## Built-in Variables

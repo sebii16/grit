@@ -15,12 +15,16 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
 
     if (cfg.dry_run) {
         for (items) |cmd| {
-            logger.info("{s} [dry_run]", .{ cmd });
+            logger.out(true, .none, null, "{s} [dry_run]", .{ cmd });
         }
         return;
     }
 
-    const worker_count = @min(cfg.threads, items.len);
+    const thread_count = switch (cfg.threads) {
+        .auto => std.Thread.getCpuCount() catch 1,
+        .count => |n| n,
+    };
+    const worker_count = @min(thread_count, items.len);
 
     logger.debug("worker_count = {}", .{ worker_count });
 
@@ -47,7 +51,7 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
 
         for (batch, 0..) |cmd, i| {
             workers[i] = io.async(worker, .{
-                gpa, io, cmd, batch.len > 1,
+                gpa, io, cfg, cmd, batch.len > 1,
             });
         }
 
@@ -70,20 +74,26 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
     }
 }
 
-fn worker(gpa: std.mem.Allocator, io: std.Io, cmd: []const u8, parallel: bool) !void {
+fn worker(gpa: std.mem.Allocator, io: std.Io, cfg: *const config.Config, cmd: []const u8, parallel: bool) !void {
     if (parallel)
-        logger.outLocked(io, .info, "{s}", .{ cmd })
+        logger.outLocked(.none, "{s}", .{ cmd })
     else
-        logger.info("{s}", .{ cmd });
+        logger.out(true, .none, null, "{s}", .{ cmd });
 
-    const os = builtin.target.os.tag;
 
-    const args = if (os == .windows)
-        [_][]const u8{ "cmd.exe", "/C", cmd }
-    else
-        [_][]const u8{ "sh", "-c", cmd };
+    const argv = try gpa.alloc([]const u8, cfg.shell.len + 1);
+    defer gpa.free(argv);
 
-    const res = try std.process.run(gpa, io, .{ .argv = &args });
+    @memcpy(argv[0..cfg.shell.len], cfg.shell);
+    argv[cfg.shell.len] = cmd;
+
+    if (comptime builtin.mode == .Debug) {
+        const argv_joined = try std.mem.join(gpa, " ", argv);
+        defer gpa.free(argv_joined);
+        logger.debug("child process argv: {s}", .{argv_joined});
+    }
+
+    const res = try std.process.run(gpa, io, .{ .argv = argv });
 
     defer gpa.free(res.stdout);
     defer gpa.free(res.stderr);
