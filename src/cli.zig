@@ -21,7 +21,7 @@ const Option = struct {
 };
 
 const cli_options = [_]Option{
-    .{ .long = "file", .short = 'f', .effect = .{ .set_field = "build_file" } },
+    .{ .long = "file", .short = 'f', .effect = .{ .set_field = "file" } },
     .{ .long = "dry-run", .short = 'd', .effect = .{ .set_field = "dry_run" } },
     .{ .long = "no-expand", .effect = .{ .set_field = "no_expand" } },
     .{ .long = "threads", .short = 't', .effect = .{ .set_field = "threads" } },
@@ -41,9 +41,9 @@ pub fn parseArgs(args: []const []const u8, cfg: *config.Config) !Action {
         const arg = args[i];
 
         const option = findOption(arg) orelse {
-            // if the first arg isnt an option treat it as a rule name
-            if (i == 1 and arg[0] != '-') {
-                cfg.rule = arg;
+            // if the encountered arg isnt an option treat it as a task name
+            if (arg[0] != '-' and cfg.task == null) {
+                cfg.task = arg;
                 continue;
             } else {
                 logger.err("unknown flag {s}'{s}'{s}", .{colors.get(.bold), arg, colors.get(.reset)});
@@ -53,9 +53,9 @@ pub fn parseArgs(args: []const []const u8, cfg: *config.Config) !Action {
 
         switch (option.effect) {
             .set_action => |action| {
-                if (cfg.rule != null) {
-                    // dont allow --help and --version after a rule has been provided
-                    logger.err("flag {s}'{s}'{s} is not allowed after specifying a build rule", .{colors.get(.bold), arg, colors.get(.reset)});
+                if (cfg.task != null) {
+                    // dont allow --help and --version after a task has been provided
+                    logger.err("flag {s}'{s}'{s} is not allowed after specifying a task", .{colors.get(.bold), arg, colors.get(.reset)});
                     return error.InvalidActionFlag;
                 }
                 return action;

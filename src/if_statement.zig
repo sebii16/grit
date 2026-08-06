@@ -56,7 +56,6 @@ pub const Condition = struct {
     op: Operator,
     rhs: []const u8,
     right_is_string: bool,
-    result: ?bool = null,
 
     pub fn create(line: u32, lhs: []const u8, op: Operator, rhs: []const u8, right_is_string: bool) Condition {
         return .{ 
@@ -69,9 +68,6 @@ pub const Condition = struct {
     }
 
     pub fn evaluate(self: *const @This(), vars: *const variables.Vars) !bool { 
-        if (self.result) |res|
-            return res;
-
         const value = variables.Vars.getVariable(vars, self.lhs) catch {
             logger.syntax(self.line, "'{s}' is undefined", .{self.lhs});
             return error.UndefinedVariable;

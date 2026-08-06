@@ -1,26 +1,26 @@
 # Grit
 
-**Grit is a simple build automation tool inspired by Make. It is currently still early in development - for now it supports variable expansion, a few built-in variables, conditional command execution, parallel and sequential command execution and several other features described below.**
+**Grit is a simple command runner written in Zig. It is currently still early in development - for now it supports variable expansion, a few built-in variables, conditional command execution, parallel and sequential command execution and several other features described below.**
 
 > [!NOTE]
 > Grit is currently experimental and under active development.
-> Build file syntax, features and general behavior may change at any time.
+> Syntax, features and general behavior may change at any time.
 
 ## Installation
 
 ### Option 1 - Build it yourself
 
 ```sh
-git clone https://github.com/sebii16/grit-build-tool
-cd grit-build-tool
+git clone https://github.com/sebii16/grit
+cd grit
 zig build-exe src/main.zig -O ReleaseFast -lc
 ```
 > [!IMPORTANT]
-> Grit requires Zig 0.16.0. Other versions are currently unsupported.
+> Grit requires Zig 0.16.0. Other versions are untested and may not work.
 
-## Build files
+## Task files
 
-**A build file (`build.grit` by default) is a list of variable declarations and rules. Each rule can hold one or more commands to run.**
+**A task file (named `gritfile` by default) is a list of variable declarations and tasks. Each task can hold one or more commands to run.**
 
 ### Comments
 
@@ -50,16 +50,16 @@ or to use double quotes inside strings:
 
 ### Directives
 
-Directives start with `@` and modify how following commands or rules behave.
+Directives start with `@` and modify how following commands or tasks behave.
 
 | Directive             | Effect                                                                              |
 | --------------------- | ----------------------------------------------------------------------------------- |
-| `@default`            | Marks the next rule as the default.                                                 |
+| `@default`            | Marks the next task as default.                                                 |
 | `@parallel`           | Commands after this run parallel to each other, until `@sequential`.                |     
 | `@sequential`         | Commands after this run one at a time (default).                                    |
 | `@if, @elif, @else`   | Executes the first block whose condition is true, or a @else block if none are true |
 
-Parallel and sequential blocks can be mixed inside a rule.
+Parallel and sequential blocks can be mixed inside a task.
 
 ## Example
 
@@ -69,7 +69,7 @@ SRC = "src/main.zig"
 OUT = "grit"
 FLAGS = "-O Debug -lc"
 
-# Default rule
+# Default task
 @default
 build {
     @if OS == "windows" {
@@ -82,19 +82,19 @@ build {
 }
 ```
 
-**Run the default rule:**
+**Run the default task:**
 
 ```sh
 grit
 ```
 
-**Run a different rule:**
+**Run a different task:**
 
 ```sh
-grit RULE
+grit TASK
 ```
 
-**Run a different build file:**
+**Use a different file:**
 
 ```sh
 grit -f FILE
@@ -109,24 +109,22 @@ grit release -t 4
 ## Flags
 
 ```text
-Build flags:
+Flags:
+  -h, --help          Show this help message and exit.
+  -v, --version       Show version, license information and exit.
   -d, --dry-run       Print commands without executing them.
-  -f, --file FILE     Build file to use (default: build.grit).
+  -f, --file FILE     Task file to use (default: gritfile).
   -t, --threads N     Max. number of threads (default: CPU core count).
-  -e, --eval SRC      Execute SRC instead of reading a build file.          
+  -e, --eval SRC      Execute SRC instead of reading from a file.          
   -i, --ignore-errors Treat execution errors as warnings.
   -q, --quiet         Only print errors.
       --no-colors     Disable colored output.
       --no-expand     Disable variable expansion.
-    
-Global flags: 
-  -h, --help          Show this help message.
-  -v, --version       Show version and license information.  
 ```
 
 ## Built-in Variables
 
-These variables are automatically available in every build file. They are reserved and can't be overwritten.
+These variables are automatically available. They are reserved and can't be overwritten.
 
 | Variable       | Description                                                          |
 | -------------- | ---------------------------------------------------------------------|

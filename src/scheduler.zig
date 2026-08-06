@@ -15,7 +15,7 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
 
     if (cfg.dry_run) {
         for (items) |cmd| {
-            logger.info("{s}", .{ cmd });
+            logger.info("{s} [dry_run]", .{ cmd });
         }
         return;
     }

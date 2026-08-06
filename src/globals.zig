@@ -13,7 +13,7 @@ pub fn init(arena_: std.mem.Allocator, gpa_: std.mem.Allocator, io_: std.Io) voi
     io = io_;
 }
 
-pub const default_build_file = "build.grit";
+pub const default_file = "gritfile";
 
 pub const ver = std.SemanticVersion{
     .major = 0,
@@ -32,23 +32,20 @@ pub const ver_msg =
 
 pub const help_msg =
     \\Usage:
-    \\  grit [rule] [build flags]
-    \\  grit [build flags]
-    \\  grit [global flag]
+    \\  grit [task] [flags]
+    \\  grit [flags]
     \\
-    \\If no rule is specified, grit executes the default rule (marked with @default).
+    \\If no task is specified, grit executes the default one (marked with @default).
     \\
-    \\Build flags:
+    \\Flags:
+    \\  -h, --help          Show this help message and exit.
+    \\  -v, --version       Show version, license information and exit.
     \\  -d, --dry-run       Print commands without executing them.
-    \\  -f, --file FILE     Build file to use (default: build.grit).
+    \\  -f, --file FILE     Task file to use (default: gritfile).
     \\  -t, --threads N     Max. number of threads (default: CPU core count).
-    \\  -e, --eval SRC      Execute SRC instead of reading a build file.          
+    \\  -e, --eval SRC      Execute SRC instead of reading from a file.          
     \\  -i, --ignore-errors Treat execution errors as warnings.
     \\  -q, --quiet         Only print errors.
     \\      --no-colors     Disable colored output.
     \\      --no-expand     Disable variable expansion.
-    \\
-    \\Global flags: 
-    \\  -h, --help          Show this help message.
-    \\  -v, --version       Show version and license information.
     ;

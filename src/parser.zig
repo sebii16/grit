@@ -30,22 +30,22 @@ const Var = struct {
     value: []const u8,
 };
 
-const Rule = struct {
+const Task = struct {
     name: []const u8,
     steps: []Step,
 };
 
 pub const Ast = union(enum) {
     VarDecl: Var,
-    RuleDecl: Rule,
+    TaskDecl: Task,
 };
 
 pub const Parser = struct {
     lexer: lexer.Lexer,
     curr: lexer.Token = .{ .value = &[_]u8{}, .type = .TOK__INVALID },
-    default_rule: ?[]const u8 = null,
+    default_task: ?[]const u8 = null,
     pending_default: bool = false,
-    rule_names: std.StringHashMap(usize),
+    task_names: std.StringHashMap(usize),
     variable_names: std.StringHashMap(usize),
     allocator: std.mem.Allocator, 
     temp_allocator: std.mem.Allocator,
@@ -53,7 +53,7 @@ pub const Parser = struct {
     pub fn init(allocator: std.mem.Allocator, gpa: std.mem.Allocator, lexer_src: []const u8) @This() {
         return .{
             .lexer = .{ .src = lexer_src },
-            .rule_names = .init(gpa),
+            .task_names = .init(gpa),
             .variable_names = .init(gpa),
             .allocator = allocator,
             .temp_allocator = gpa,
@@ -62,9 +62,9 @@ pub const Parser = struct {
 
     pub fn parseAll(self: *Parser) ![]Ast {
         defer {
-            self.rule_names.deinit();
+            self.task_names.deinit();
             self.variable_names.deinit();
-            logger.debug("cleanup rule and variable hashmaps", .{});
+            logger.debug("cleanup task and variable hashmaps", .{});
         }
 
         var nodes: std.ArrayList(Ast) = .empty;
@@ -80,7 +80,7 @@ pub const Parser = struct {
                 if (directive != .default)
                     return self.syntaxError("directive '@{s}' is invalid at top level", .{ self.curr.value });
 
-                if (self.default_rule != null or self.pending_default) 
+                if (self.default_task != null or self.pending_default) 
                     return self.syntaxError("@default can only be called once", .{});
 
                 self.pending_default = true;
@@ -93,12 +93,12 @@ pub const Parser = struct {
         }
 
         if (self.pending_default)
-            return self.syntaxError("no rule found after @default", .{});
+            return self.syntaxError("no task found after @default", .{});
 
         return nodes.toOwnedSlice(self.allocator);
     }
 
-    fn checkDuplicate(self: *@This(), name: []const u8, decl_type: enum {variable, rule}) !void {
+    fn checkDuplicate(self: *@This(), name: []const u8, decl_type: enum {variable, task}) !void {
         inline for (variables.builtin_variables) |v| {
             if (std.mem.eql(u8, v, name)) {
                 return self.syntaxError(
@@ -110,7 +110,7 @@ pub const Parser = struct {
 
         const res = try (switch (decl_type) {
             .variable => &self.variable_names,
-            .rule => &self.rule_names,
+            .task => &self.task_names,
         }).getOrPut(name);
 
         if (res.found_existing) {
@@ -136,7 +136,7 @@ pub const Parser = struct {
                 try self.checkDuplicate(name, .variable);
 
                 if (self.pending_default)
-                    return self.syntaxError("@default must be followed by a rule declaration", .{});
+                    return self.syntaxError("@default must be followed by a task declaration", .{});
 
                 try self.nextToken();
                 try self.expect(&.{ .TOK_STRING });
@@ -152,18 +152,18 @@ pub const Parser = struct {
                 };
             },
             .TOK_LBRACE => {
-                // Rule
-                try self.checkDuplicate(name, .rule);
+                // Task
+                try self.checkDuplicate(name, .task);
 
                 if (self.pending_default) {
-                    self.default_rule = name;
+                    self.default_task = name;
                     self.pending_default = false;
                 }
 
                 return .{
-                    .RuleDecl = .{
+                    .TaskDecl = .{
                         .name = name, 
-                        .steps = try self.parseRule(),
+                        .steps = try self.parseTask(),
                     }
                 };
             },
@@ -171,7 +171,7 @@ pub const Parser = struct {
         }
     }
 
-    fn parseRule(self: *Parser) ![]Step {
+    fn parseTask(self: *Parser) ![]Step {
         try self.nextToken();
 
         var steps: std.ArrayList(Step) = .empty;
@@ -228,7 +228,7 @@ pub const Parser = struct {
                 .TOK_EOF => {
                     return self.syntaxError("expected '}}' got EOF", .{});
                 },
-                else => return self.syntaxError("unexpected token inside rule declaration: '{s}': '{s}'", .{@tagName(self.curr.type), self.curr.value}),
+                else => return self.syntaxError("unexpected token inside task declaration: '{s}': '{s}'", .{@tagName(self.curr.type), self.curr.value}),
             }
             try self.nextToken();
         }
@@ -286,14 +286,14 @@ pub const Parser = struct {
                         rhs,
                         rhs_is_string,
                     ),
-                    .steps = try self.parseRule(),
+                    .steps = try self.parseTask(),
                 };
             },
             .@"else" => {
                 try self.expect(&.{ .TOK_LBRACE });
                 if_block.* = .{
                     .condition = null,
-                    .steps = try self.parseRule(),
+                    .steps = try self.parseTask(),
                 };
             }
         }

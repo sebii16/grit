@@ -78,7 +78,7 @@ pub const Vars = struct {
         return self;
     }
 
-    pub fn expand(self: *const @This(), input: []const u8, rule_name: []const u8) ![]u8 {
+    pub fn expand(self: *const @This(), input: []const u8, task_name: []const u8) ![]u8 {
         var expanded: std.ArrayList(u8) = .empty;
 
         const len = input.len;
@@ -109,7 +109,7 @@ pub const Vars = struct {
 
                 const var_name = input[start..end];
                 const value = self.getVariable(var_name) catch |err| 
-                    return reportBadVariable(input, rule_name, start, end, err);
+                    return reportBadVariable(input, task_name, start, end, err);
 
                 const value_string: []const u8 = blk: switch (value) {
                     .string => |s| s,
@@ -162,8 +162,8 @@ pub fn getRuntimeVariable(name: []const u8, allocator: std.mem.Allocator) ![]con
     return allocator.dupe(u8, res);
 }
 
-fn reportBadVariable(full_input: []const u8, rule_name: []const u8, start: usize, end: usize, err: anyerror) anyerror {
-    logger.syntax(null, "undefined or invalid variable in rule {s}'{s}'{s}:\n", .{ colors.get(.bold), rule_name, colors.get(.reset) });
+fn reportBadVariable(full_input: []const u8, task_name: []const u8, start: usize, end: usize, err: anyerror) anyerror {
+    logger.syntax(null, "undefined or invalid variable in task {s}'{s}'{s}:\n", .{ colors.get(.bold), task_name, colors.get(.reset) });
 
     logger.info("{s}", .{full_input});
 

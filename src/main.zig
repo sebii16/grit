@@ -37,11 +37,11 @@ pub fn main(init: std.process.Init) u8 {
             logger.info("{s}", .{ globals.ver_msg });
         },
         .run => {
-            const src = cfg.src orelse readFile(arena, io, cfg.build_file) catch return 1;
+            const src = cfg.src orelse readFile(arena, io, cfg.file) catch return 1;
             var parser = p.Parser.init(arena, gpa, src);
             const ast = parser.parseAll() catch return 1;
             
-            runner.runBuildRule(arena, gpa, io, ast, cfg, &parser) catch return 1;
+            runner.runTask(arena, gpa, io, ast, cfg, &parser) catch return 1;
         },
     }
 
