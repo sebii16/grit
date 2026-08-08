@@ -1,10 +1,19 @@
 # Grit
 
-**Grit is a simple command runner written in Zig. It is currently still early in development - for now it supports variable expansion, a few built-in variables, conditional command execution, parallel and sequential command execution and several other features described below.**
+**Grit is a simple and fast command runner written in Zig**
 
-> [!NOTE]
-> Grit is currently experimental and under active development.
-> Syntax, features and general behavior may change at any time.
+## Features
+
+- Variable expansion
+- Default tasks with `@default`
+- Automatic `gritfile` discovery from parent directories
+- Built-in variables
+- Parallel and sequential execution
+- Conditional execution with `@if`, `@elif` and `@else`
+- Inline source execution with `--eval`
+- Dry-run mode with `--dry-run`
+- Custom shell support with `--shell`
+- And more options listed in **[CLI.md](CLI.md)**
 
 ## Installation
 
@@ -15,6 +24,7 @@ git clone https://github.com/sebii16/grit
 cd grit
 zig build-exe src/main.zig -O ReleaseFast -lc
 ```
+
 > [!IMPORTANT]
 > Grit requires Zig 0.16.0. Other versions are untested and may not work.
 
@@ -80,6 +90,10 @@ build {
         "echo OS not supported"
     }
 }
+
+another_task {
+    "echo test"
+}
 ```
 
 **Run the default task:**
@@ -91,7 +105,7 @@ grit
 **Run a different task:**
 
 ```sh
-grit TASK
+grit another_task
 ```
 
 **Use a different file:**
@@ -100,28 +114,15 @@ grit TASK
 grit -f FILE
 ```
 
-**Run with a specific number of parallel threads:**
+**Use a different shell**
 
 ```sh
-grit release -t 4
+grit --shell "pwsh.exe -c"
 ```
 
-## Flags
+## CLI Options
 
-```text
-Flags:
-  -h, --help            Show this help message and exit.
-  -v, --version         Show version, license information and exit.
-  -d, --dry-run         Print commands without executing them.
-  -f, --file FILE       Override file to read from (default: gritfile).
-  -t, --threads NUM     Override the max. number of threads (default: CPU core count).
-  -e, --eval SRC        Execute SRC instead of reading from a file.
-  -i, --ignore-errors   Treat execution errors as warnings.
-  -q, --quiet           Only print errors.
-  -s, --shell SHELL     Set the shell used to execute commands (e.g. -s "powershell.exe -c").
-      --no-colors       Disable colored output.
-      --no-expand       Disable variable expansion.
-```
+**For the complete list of cli options see [CLI.md](CLI.md)**
 
 ## Built-in Variables
 
@@ -131,10 +132,9 @@ These variables are automatically available. They are reserved and can't be over
 | -------------- | ---------------------------------------------------------------------|
 | `OS`           | Current operating system                                             |
 | `ARCH`         | Current CPU architecture                                             |
-| `TIME`         | Current time                                                         |
-| `DATE`         | Current date                                                         |
-| `CWD`          | Current working directory                                            |
-| `GRIT_VER`     | Your version of grit                                              |
+| `CWD`          | Directory from which Grit was called                                 |
+| `GRIT_VER`     | Your version of grit                                                 |
+| `ROOT_DIR`     | Directory containing the gritfile and used to run tasks              |
 
 ## License
 

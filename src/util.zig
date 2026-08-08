@@ -12,10 +12,44 @@ pub fn parseBool(input: []const u8) error{InvalidBoolean}!bool {
     return error.InvalidBoolean;
 }
 
-pub fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]const u8 {
-    return std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), io, path, allocator, .unlimited) catch |e| {
-        logger.err("failed to read {s}'{s}'{s}", .{colors.get(.bold), path, colors.get(.reset)});
-        return e;
+pub fn findFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, file_name: []const u8) ![]u8 {
+    const cwd = try std.process.currentPathAlloc(io, gpa);
+    defer gpa.free(cwd);
+
+    var dir: []const u8 = cwd;
+
+    while (true) {
+        const path = try std.fs.path.join(gpa, &.{ dir, file_name });
+        defer gpa.free(path);
+
+        logger.debug("trying {s}", .{path});
+        
+        if (std.Io.Dir.access(std.Io.Dir.cwd(), io, path, .{})) |_| {
+            if (!std.mem.eql(u8, dir, cwd))
+                logger.info("found {s}/{s}{s}{s}", .{ dir, colors.get(.bold), file_name, colors.get(.reset) });
+
+            return try arena.dupe(u8, dir);
+        } else |err| {
+            switch (err) {
+                error.FileNotFound => {},
+                else => break,
+            }
+        }
+
+        dir = std.fs.path.dirname(dir) orelse break;
+    }
+
+    logger.err("couldn't find {s}'{s}'{s}", .{ colors.get(.bold), file_name, colors.get(.reset) });
+    return error.FileNotFound;
+}
+
+pub fn readFile(arena: std.mem.Allocator, gpa: std.mem.Allocator, io: std.Io, dir: []const u8, file_name: []const u8) ![]const u8 {
+    const joined_path = try std.fs.path.join(gpa, &.{ dir, file_name });
+    defer gpa.free(joined_path);
+
+    return std.Io.Dir.readFileAlloc(std.Io.Dir.cwd(), io, joined_path, arena, .unlimited) catch {
+        logger.err("failed to read {s}'{s}'{s}", .{colors.get(.bold), joined_path, colors.get(.reset)});
+        return error.FailedFileRead;
     };
 }
 

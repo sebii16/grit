@@ -6,12 +6,23 @@ const variables = @import("variables.zig");
 const colors = @import("colors.zig");
 const config = @import("config.zig");
 
-pub fn runTask(arena: std.mem.Allocator, gpa: std.mem.Allocator, io: std.Io, ast: []const parser.Ast, cfg: *config.Config, prs: *const parser.Parser) !void {
+pub fn runTask(
+    arena: std.mem.Allocator,
+    gpa: std.mem.Allocator,
+    io: std.Io,
+    ast: []const parser.Ast,
+    cfg: *config.Config,
+    prs: *const parser.Parser,
+    vars: *const variables.Vars) !void {
+
+    var is_default_task = false;
+
     if (cfg.task == null) {
         cfg.task = prs.default_task orelse {
             logger.err("no task selected", .{});
             return error.MissingTask;
         };
+        is_default_task = true;
     }
 
     for (ast) |node| {
@@ -19,25 +30,19 @@ pub fn runTask(arena: std.mem.Allocator, gpa: std.mem.Allocator, io: std.Io, ast
             .TaskDecl => |task| {
                 if (!std.mem.eql(u8, task.name, cfg.task.?)) continue;
 
-                const vars = variables.Vars.buildMap(arena, io, ast) catch |e| {
-                    logger.err("failed to build variable map", .{});
-                    logger.debug("{s}", .{@errorName(e)});
-                    return e;
-                };
-
-                var batch: std.ArrayList([]const u8) = .empty;
+                var parallel_batch: std.ArrayList([]const u8) = .empty;
                 var parallel = false;
 
-                logger.info("selected task: {s}'{s}'{s}", .{colors.get(.bold), cfg.task.?, colors.get(.reset)});
+                logger.info("selected task: {s}{s}{s}{s}", .{colors.get(.bold), if (is_default_task) "@default " else "", cfg.task.?, colors.get(.reset)});
 
-                try runSteps(arena, gpa, io, task.steps, cfg, &vars, &batch, &parallel);
+                try processSteps(arena, gpa, io, task.steps, cfg, vars, &parallel_batch, &parallel);
 
-                if (batch.items.len > 0)
-                    try scheduler.scheduleCommands(io, gpa, batch.items, cfg);
+                if (parallel_batch.items.len > 0)
+                    try scheduler.scheduleCommands(io, gpa, parallel_batch.items, cfg);
 
                 if (!scheduler.had_work)
-                    logger.info("nothing to do for task {s}'{s}'{s}", .{ colors.get(.bold), cfg.task.?, colors.get(.reset) })
-                else
+                    logger.info("nothing to do for task {s}{s}{s}", .{ colors.get(.bold), cfg.task.?, colors.get(.reset) })
+                else 
                     logger.info("all done", .{});
 
                 return;
@@ -50,14 +55,14 @@ pub fn runTask(arena: std.mem.Allocator, gpa: std.mem.Allocator, io: std.Io, ast
     return error.InvalidTask;
 }
 
-fn runSteps(
+fn processSteps(
     arena: std.mem.Allocator,
     gpa: std.mem.Allocator,
     io: std.Io,
     steps: []const parser.Step,
     cfg: *config.Config,
     vars: *const variables.Vars,
-    batch: *std.ArrayList([]const u8),
+    parallel_batch: *std.ArrayList([]const u8),
     parallel: *bool) !void {
 
     for (steps) |step| {
@@ -65,9 +70,10 @@ fn runSteps(
             .directive => |d| {
                 switch (d) {
                     .sequential => {
-                        if (parallel.* and batch.items.len > 0) {
-                            try scheduler.scheduleCommands(io, gpa, batch.items, cfg);
-                            batch.clearRetainingCapacity();
+                        if (parallel.* and parallel_batch.items.len > 0) {
+                            // execute all commands that are already in parallel_batch before changing to sequential mode
+                            try scheduler.scheduleCommands(io, gpa, parallel_batch.items, cfg);
+                            parallel_batch.clearRetainingCapacity();
                         }
                         parallel.* = false;
                     },
@@ -77,16 +83,23 @@ fn runSteps(
                 logger.debug("parallel = {}", .{ parallel.* });
             },
             .cmd => |cmd| {
-                const expanded = if (!cfg.no_expand) try vars.expand(cmd, cfg.task.?) else cmd;
+                const expanded = 
+                    if (!cfg.no_expand)
+                        vars.expand(gpa, cmd, cfg.task.?) catch |e| {
+                            logger.err("variable expansion for command {s}'{s}'{s} failed", .{ colors.get(.bold), cmd, colors.get(.reset) });
+                            logger.debug("{s}", .{ @errorName(e) });
+                            return e;
+                        }
+                    else cmd;
 
                 if (parallel.*)
-                    try batch.append(arena, expanded)
+                    try parallel_batch.append(arena, expanded)
                 else 
                     try scheduler.scheduleCommands(io, gpa, &.{expanded}, cfg);
             },
             .if_block => |block| {
                 if (try block.selectBlock(vars)) |selected_steps|
-                    try runSteps(arena, gpa, io, selected_steps, cfg, vars, batch, parallel);
+                    try processSteps(arena, gpa, io, selected_steps, cfg, vars, parallel_batch, parallel);
             },
         }
     }

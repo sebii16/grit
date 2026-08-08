@@ -88,7 +88,7 @@ pub fn out(nl: bool, level: LogLevel, line: ?u32, comptime fmt: []const u8, args
         output.print(
             "{s}:{d}: {s}{s}{s}" ++ fmt ++ "{s}",
             .{
-                config.Config.current.file,
+                config.Config.current.file_name,
                 line.?,
                 color_code,
                 prefix,

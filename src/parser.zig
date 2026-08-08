@@ -4,6 +4,7 @@ const logger = @import("logger.zig");
 const if_statement = @import("if_statement.zig");
 const variables = @import("variables.zig");
 const colors = @import("colors.zig");
+const globals = @import("globals.zig");
 
 pub const Directive = enum {
     invalid,
@@ -64,7 +65,7 @@ pub const Parser = struct {
         defer {
             self.task_names.deinit();
             self.variable_names.deinit();
-            logger.debug("cleanup task and variable hashmaps", .{});
+            logger.debug("cleanup temporary task and variable hashmaps", .{});
         }
 
         var nodes: std.ArrayList(Ast) = .empty;
@@ -75,13 +76,13 @@ pub const Parser = struct {
                 const directive = Directive.parse(self.curr.value);
 
                 if (directive == .invalid) 
-                    return self.syntaxError("directive '@{s}' doesn't exist", .{ self.curr.value });
+                    return self.parsingError("directive '@{s}' doesn't exist", .{ self.curr.value });
 
                 if (directive != .default)
-                    return self.syntaxError("directive '@{s}' is invalid at top level", .{ self.curr.value });
+                    return self.parsingError("directive '@{s}' is invalid at top level", .{ self.curr.value });
 
                 if (self.default_task != null or self.pending_default) 
-                    return self.syntaxError("@default can only be called once", .{});
+                    return self.parsingError("@default can only be called once", .{});
 
                 self.pending_default = true;
                 try self.nextToken();
@@ -93,18 +94,23 @@ pub const Parser = struct {
         }
 
         if (self.pending_default)
-            return self.syntaxError("no task found after @default", .{});
+            return self.parsingError("no task found after @default", .{});
 
         return nodes.toOwnedSlice(self.allocator);
     }
 
-    fn checkDuplicate(self: *@This(), name: []const u8, decl_type: enum {variable, task}) !void {
-        inline for (variables.builtin_variables) |v| {
-            if (std.mem.eql(u8, v, name)) {
-                return self.syntaxError(
-                    "redefinition of builtin variable {s}'{s}'{s} is not allowed",
-                    .{colors.get(.bold), name, colors.get(.reset)}
-                );
+    fn validateDeclaration(self: *@This(), name: []const u8, decl_type: enum {variable, task}) !void {
+        if (name.len > globals.max_name_length)
+            return self.parsingError("variable name exceeds maximum length of {d} characters", .{globals.max_name_length});
+
+        if (decl_type == .variable) {
+            inline for (variables.builtin_variables) |v| {
+                if (std.mem.eql(u8, v, name)) {
+                    return self.parsingError(
+                        "redefinition of builtin variable {s}'{s}'{s} is not allowed",
+                        .{colors.get(.bold), name, colors.get(.reset)}
+                    );
+                }
             }
         }
 
@@ -114,7 +120,7 @@ pub const Parser = struct {
         }).getOrPut(name);
 
         if (res.found_existing) {
-            return self.syntaxError(
+            return self.parsingError(
                 "{s} {s}'{s}'{s} redefined: first definition on line {d}",
                 .{@tagName(decl_type), colors.get(.bold), name, colors.get(.reset), res.value_ptr.*}
             );
@@ -125,7 +131,7 @@ pub const Parser = struct {
 
     fn parseDecl(self: *Parser) !Ast {
         if (self.curr.type != .TOK_IDENT)
-            return self.syntaxError("expected declaration, got '{s}'", .{ @tagName(self.curr.type) });
+            return self.parsingError("expected declaration, got '{s}'", .{ @tagName(self.curr.type) });
 
         const name = self.curr.value;
         try self.nextToken();
@@ -133,10 +139,10 @@ pub const Parser = struct {
         switch (self.curr.type) {
             .TOK_ASSIGN => {
                 // Variable
-                try self.checkDuplicate(name, .variable);
+                try self.validateDeclaration(name, .variable);
 
                 if (self.pending_default)
-                    return self.syntaxError("@default must be followed by a task declaration", .{});
+                    return self.parsingError("@default must be followed by a task declaration", .{});
 
                 try self.nextToken();
                 try self.expect(&.{ .TOK_STRING });
@@ -153,7 +159,7 @@ pub const Parser = struct {
             },
             .TOK_LBRACE => {
                 // Task
-                try self.checkDuplicate(name, .task);
+                try self.validateDeclaration(name, .task);
 
                 if (self.pending_default) {
                     self.default_task = name;
@@ -167,7 +173,7 @@ pub const Parser = struct {
                     }
                 };
             },
-            else => return self.syntaxError("expected '=' or '{{', got '{s}'", .{ @tagName(self.curr.type) }),
+            else => return self.parsingError("expected '=' or '{{', got '{s}'", .{ @tagName(self.curr.type) }),
         }
     }
 
@@ -220,15 +226,15 @@ pub const Parser = struct {
                             continue :outer;
                         },
                         .elif, .@"else" => |e| {
-                            return self.syntaxError("@{s} has no matching @if", .{@tagName(e)});
+                            return self.parsingError("@{s} has no matching @if", .{@tagName(e)});
                         },
-                        else => return self.syntaxError("directive '@{s}' is invalid here", .{ self.curr.value }),
+                        else => return self.parsingError("directive '@{s}' is invalid here", .{ self.curr.value }),
                     }
                 },
                 .TOK_EOF => {
-                    return self.syntaxError("expected '}}' got EOF", .{});
+                    return self.parsingError("expected '}}' got EOF", .{});
                 },
-                else => return self.syntaxError("unexpected token inside task declaration: '{s}': '{s}'", .{@tagName(self.curr.type), self.curr.value}),
+                else => return self.parsingError("unexpected token inside task declaration: '{s}': '{s}'", .{@tagName(self.curr.type), self.curr.value}),
             }
             try self.nextToken();
         }
@@ -246,13 +252,13 @@ pub const Parser = struct {
         @"else",
     };
 
-    fn parseIfBlock(self: *Parser, initial_type: IfType) anyerror!*if_statement.IfBlock {
+    fn parseIfBlock(self: *Parser, if_type: IfType) anyerror!*if_statement.IfBlock {
         // skip opener
         try self.nextToken();
 
         const if_block = try self.allocator.create(if_statement.IfBlock);
 
-        switch (initial_type) {
+        switch (if_type) {
             .@"if", .elif => {
                 try self.expect(&.{ .TOK_IDENT });
 
@@ -266,7 +272,7 @@ pub const Parser = struct {
                     .TOK_LTE => .lte,
                     .TOK_GT => .gt,
                     .TOK_GTE => .gte,
-                    else => return self.syntaxError("expected comparison operator got '{s}' ({s})", .{@tagName(self.curr.type), self.curr.value})
+                    else => return self.parsingError("expected comparison operator got '{s}'", .{@tagName(self.curr.type) })
                 };
 
                 try self.nextToken();
@@ -311,17 +317,17 @@ pub const Parser = struct {
         }
     }
 
-    inline fn syntaxError(self: *const Parser, comptime fmt: []const u8, args: anytype) error{SyntaxError} {
+    inline fn parsingError(self: *const Parser, comptime fmt: []const u8, args: anytype) error{SyntaxError} {
         logger.syntax(self.lexer.line, fmt, args);
         return error.SyntaxError;
     }
 
-    fn expect(self: *Parser, comptime expected: []const lexer.TokenType) !void {
-        inline for (expected) |token| {
+    fn expect(self: *Parser, comptime tokens: []const lexer.TokenType) !void {
+        inline for (tokens) |token| {
             if (self.curr.type == token)
                 return;
         }
 
-        return self.syntaxError("unexpected token '{s}'", .{ @tagName(self.curr.type) });
+        return self.parsingError("unexpected token '{s}'", .{ @tagName(self.curr.type) });
     }
 };

@@ -36,3 +36,13 @@ install {
     "sudo install -m 755 grit /usr/local/bin/grit"
   }
 }
+
+gen_cli_md {
+    @if OS == "windows" {
+        'zig build-exe src/gen_cli_md.zig -femit-bin="gen_cli_md.exe"'
+        ".\gen_cli_md.exe"
+    } @elif OS == "linux" {
+        'zig build-exe src/gen_cli_md.zig'
+        "./gen_cli_md"
+    }
+}

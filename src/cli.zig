@@ -4,38 +4,163 @@ const config = @import("config.zig");
 const colors = @import("colors.zig");
 const util = @import("util.zig");
 
-pub const Action = enum {
+pub const Mode = enum {
     help,
     version,
     run,
+    dump_vars,
 };
 
 const OptionEffect = union(enum) {
     set_field: []const u8,
-    set_action: Action
+    set_mode: Mode
+};
+
+const OptionCategory = union(enum) {
+    general,
+    execution
 };
 
 const Option = struct {
     long: []const u8,
+    description: []const u8,
+    expected_arg: ?[]const u8 = null,
+
     short: ?u8 = null,
     effect: OptionEffect,
+    category: OptionCategory = .execution,
 };
 
 const cli_options = [_]Option{
-    .{ .long = "file", .short = 'f', .effect = .{ .set_field = "file" } },
-    .{ .long = "dry-run", .short = 'd', .effect = .{ .set_field = "dry_run" } },
-    .{ .long = "no-expand", .effect = .{ .set_field = "no_expand" } },
-    .{ .long = "threads", .short = 't', .effect = .{ .set_field = "threads" } },
-    .{ .long = "ignore-errors", .short = 'i', .effect = .{ .set_field = "ignore_errors" } },
-    .{ .long = "no-colors", .effect = .{ .set_field = "no_colors" } },
-    .{ .long = "help", .short = 'h', .effect = .{ .set_action = .help } },
-    .{ .long = "version", .short = 'v', .effect = .{ .set_action = .version } },
-    .{ .long = "eval", .short = 'e', .effect = .{ .set_field = "src" } },
-    .{ .long = "quiet", .short = 'q', .effect = .{ .set_field = "quiet" } },
-    .{ .long = "shell", .short = 's', .effect = .{ .set_field = "shell" } },
+    // General
+    .{
+        .long = "help",
+        .short = 'h',
+        .effect = .{ .set_mode = .help },
+        .description = "Show this help message and exit.",
+        .category = .general
+    },
+    .{
+        .long = "version",
+        .short = 'v',
+        .effect = .{ .set_mode = .version },
+        .description = "Show version, license information and exit.",
+        .category = .general
+    },
+    .{ 
+        .long = "no-colors",
+        .effect = .{ .set_field = "no_colors" },
+        .description = "Disable colored output.",
+        .category = .general
+    },
+    // Execution
+    .{
+        .long = "file",
+        .short = 'f',
+        .effect = .{ .set_field = "file_name" },
+        .description = "Override file to read from (default: gritfile).",
+        .expected_arg = "FILE"
+    },
+    .{
+        .long = "dry-run",
+        .short = 'd',
+        .effect = .{ .set_field = "dry_run" },
+        .description = "Print commands without executing them.",
+    },
+    .{
+        .long = "threads", 
+        .short = 't',
+        .effect = .{ .set_field = "threads" },
+        .description = "Set the maximum number of threads (default: CPU core count).",
+        .expected_arg = "N"
+    },
+    .{
+        .long = "ignore-errors",
+        .short = 'i',
+        .effect = .{ .set_field = "ignore_errors" },
+        .description = "Treat execution errors as warnings."
+    },
+    .{
+        .long = "eval",
+        .short = 'e',
+        .effect = .{ .set_field = "src" },
+        .description = "Execute SRC instead of reading from a file.",
+        .expected_arg = "SRC"
+    },
+    .{
+        .long = "quiet",
+        .short = 'q',
+        .effect = .{ .set_field = "quiet" },
+        .description = "Only print errors."
+    },
+    .{
+        .long = "shell",
+        .short = 's',
+        .effect = .{ .set_field = "shell" },
+        .description = "Set the shell used to execute commands (e.g. -s \"pwsh.exe -c\").",
+        .expected_arg = "SHELL"
+    },
+    .{
+        .long = "no-expand",
+        .effect = .{ .set_field = "no_expand" },
+        .description = "Disable variable expansion.",
+    },
+    .{
+        .long = "dump-vars",
+        .effect = .{ .set_mode = .dump_vars},
+        .description = "List all variables and exit.",
+    },
 };
 
-pub fn parseArgs(arena: std.mem.Allocator, args: []const []const u8, cfg: *config.Config) !Action {
+pub const flag_list = blk: {
+    var max_len: usize = 0;
+    const pad = 1;
+
+    for (cli_options) |opt| {
+        const len = if (opt.expected_arg) |arg| arg.len + opt.long.len else opt.long.len;
+        max_len = @max(max_len, len);
+    } 
+
+    var general: []const u8 = "General Options:\n";
+    var execution: []const u8 = "Execution Options:\n";
+
+    for (cli_options) |opt| {
+        const short = if (opt.short) |s| 
+            std.fmt.comptimePrint("-{c}, ", .{s})
+        else
+            // 4 spaces instead of "-c, "
+            "    ";
+
+        const arg = if (opt.expected_arg) |arg|
+            std.fmt.comptimePrint("<{s}>", .{arg})
+        else 
+            "";
+
+        const len = opt.long.len + arg.len;
+
+        const category = switch (opt.category) {
+            .general => &general,
+            .execution => &execution
+        };
+
+        category.* = category.* ++ std.fmt.comptimePrint("  {s}--{s} {s}{s}{s}\n", .{short, opt.long, arg, " " ** (max_len - len + pad), opt.description});
+    }
+
+    break :blk general ++ "\n" ++ execution;
+};
+
+pub const help_msg =
+    \\Usage:
+    \\  grit [TASK] [OPTIONS]
+    \\
+    \\If TASK is left empty, Grit uses the default task (marked with @default).
+    \\Grit automatically searches the current directory and its parents for a gritfile.
+    \\
+    \\
+    ++ flag_list
+;
+
+pub fn parseArgs(arena: std.mem.Allocator, args: []const []const u8, cfg: *config.Config) !Mode {
     // start after executable name
     var i: usize = 1;
 
@@ -54,13 +179,13 @@ pub fn parseArgs(arena: std.mem.Allocator, args: []const []const u8, cfg: *confi
         };
 
         switch (option.effect) {
-            .set_action => |action| {
+            .set_mode => |mode| {
                 if (cfg.task != null) {
                     // dont allow --help and --version after a task has been provided
                     logger.err("flag {s}'{s}'{s} is not allowed after specifying a task", .{colors.get(.bold), arg, colors.get(.reset)});
-                    return error.InvalidActionFlag;
+                    return error.InvalidModeFlag;
                 }
-                return action;
+                return mode;
             },
             .set_field => |field| {
                 inline for (@typeInfo(@TypeOf(cfg.*)).@"struct".fields) |struct_field| {

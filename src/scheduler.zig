@@ -59,7 +59,6 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
 
         for (workers[0..spawned], 0..) |*w, i| {
             w.await(io) catch |e| {
-                std.debug.print("\n", .{});
                 logger.out(true, if (cfg.ignore_errors) .warning else .err, null, "command {s}'{s}'{s} failed{s}", .{
                     colors.get(.bold), batch[i], colors.get(.reset), if (cfg.ignore_errors) "" else ". stopping"
                 });
@@ -84,6 +83,7 @@ fn worker(gpa: std.mem.Allocator, io: std.Io, cfg: *const config.Config, cmd: []
     const argv = try gpa.alloc([]const u8, cfg.shell.len + 1);
     defer gpa.free(argv);
 
+    // copy the bytes from cfg.shell into argv and append the cmd
     @memcpy(argv[0..cfg.shell.len], cfg.shell);
     argv[cfg.shell.len] = cmd;
 
@@ -93,19 +93,24 @@ fn worker(gpa: std.mem.Allocator, io: std.Io, cfg: *const config.Config, cmd: []
         logger.debug("child process argv: {s}", .{argv_joined});
     }
 
-    const res = try std.process.run(gpa, io, .{ .argv = argv });
+    const res = if (cfg.file_dir) |cwd| 
+        try std.process.run(gpa, io, .{ .argv = argv, .cwd = .{ .path = cwd } })
+    else
+        try std.process.run(gpa, io, .{ .argv = argv });
 
     defer gpa.free(res.stdout);
     defer gpa.free(res.stderr);
     
-    const output = try std.mem.concat(gpa, u8, &.{res.stdout, res.stderr});
-    defer gpa.free(output);
+    if (!cfg.quiet) {
+        const output = try std.mem.concat(gpa, u8, &.{res.stdout, res.stderr});
+        defer gpa.free(output);
 
-    if (parallel) 
-        try logger.log_mutex.lock(io);
+        if (parallel) 
+            try logger.log_mutex.lock(io);
 
-    defer if (parallel) logger.log_mutex.unlock(io);
-    try std.Io.File.stdout().writeStreamingAll(io, output);
+        defer if (parallel) logger.log_mutex.unlock(io);
+        try std.Io.File.stdout().writeStreamingAll(io, output);
+    }
 
     return switch (res.term) {
         .exited => |code| if (code != 0) error.CommandFailed,

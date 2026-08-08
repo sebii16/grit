@@ -14,7 +14,8 @@ const default_shell: []const []const u8 = switch (builtin.os.tag) {
 pub const Config = struct {
     pub var current: Config = .{};
 
-    file: []const u8 = globals.default_file,
+    file_name: []const u8 = globals.default_file,
+    file_dir: ?[]const u8 = null,
     dry_run: bool = false,
     no_expand: bool = false,
     threads: ThreadCount = .auto,
