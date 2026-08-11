@@ -28,12 +28,14 @@ pub fn runTask(
     for (ast) |node| {
         switch (node) {
             .TaskDecl => |task| {
-                if (!std.mem.eql(u8, task.name, cfg.task.?)) continue;
+                const has_alias = task.alias != null;
+
+                if (!std.mem.eql(u8, task.name, cfg.task.?) and (!has_alias or !std.mem.eql(u8, task.alias.?, cfg.task.?))) continue;
 
                 var parallel_batch: std.ArrayList([]const u8) = .empty;
                 var parallel = false;
 
-                logger.info("selected task: {s}{s}{s}{s}", .{colors.get(.bold), if (is_default_task) "@default " else "", cfg.task.?, colors.get(.reset)});
+                logger.info("selected task: {s}{s}{s}{s}", .{colors.get(.bold), if (is_default_task) "@default " else "", task.name, colors.get(.reset)});
 
                 try processSteps(arena, gpa, io, task.steps, cfg, vars, &parallel_batch, &parallel);
 

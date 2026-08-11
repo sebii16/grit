@@ -3,6 +3,7 @@ OUT = "grit"
 DEBUG_FLAGS = "-O Debug -freference-trace=10 -lc"
 RELEASE_FLAGS = "-O ReleaseFast -fstrip -lc"
 
+@alias(c)
 clean {
     @parallel
     "rm -f *.exe"
@@ -12,6 +13,7 @@ clean {
 }
 
 @default
+@alias(d)
 debug {
     @if OS == "windows" {
         "zig build-exe $FILES -femit-bin=$OUT-d.exe $DEBUG_FLAGS"
@@ -20,7 +22,8 @@ debug {
     }
 }
 
-rel {
+@alias(r)
+release {
     @if OS == "windows" {
         "zig build-exe $FILES -femit-bin=$OUT.exe $RELEASE_FLAGS"
     } @elif OS == "linux" {
@@ -28,6 +31,7 @@ rel {
     }
 }
 
+@alias(i)
 install {
   @if OS == "windows" {
     "copy $OUT.exe c:\grit"
@@ -37,6 +41,7 @@ install {
   }
 }
 
+@alias(g)
 gen_cli_md {
     @if OS == "windows" {
         'zig build-exe src/gen_cli_md.zig -femit-bin="gen_cli_md.exe"'

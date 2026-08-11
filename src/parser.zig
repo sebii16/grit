@@ -14,6 +14,7 @@ pub const Directive = enum {
     @"if",
     elif,
     @"else",
+    alias,
 
     inline fn parse(name: []const u8) Directive {
         return std.meta.stringToEnum(Directive, name) orelse .invalid;
@@ -33,6 +34,7 @@ const Var = struct {
 
 const Task = struct {
     name: []const u8,
+    alias: ?[]const u8 = null,
     steps: []Step,
 };
 
@@ -40,7 +42,6 @@ pub const Ast = union(enum) {
     VarDecl: Var,
     TaskDecl: Task,
 };
-
 
 pub fn listAllTasks(self: []const Ast) void {
     if (self.len == 0) {
@@ -64,6 +65,7 @@ pub const Parser = struct {
     curr: lexer.Token = .{ .value = &[_]u8{}, .type = .TOK__INVALID },
     default_task: ?[]const u8 = null,
     pending_default: bool = false,
+    next_alias: ?[]const u8 = null,
     task_names: std.StringHashMap(usize),
     variable_names: std.StringHashMap(usize),
     allocator: std.mem.Allocator, 
@@ -89,20 +91,34 @@ pub const Parser = struct {
         var nodes: std.ArrayList(Ast) = .empty;
         try self.nextToken();
 
+        // parse top level
         while (self.curr.type != .TOK_EOF) {
             if (self.curr.type == .TOK_DIRECTIVE) {
                 const directive = Directive.parse(self.curr.value);
 
-                if (directive == .invalid) 
-                    return self.parsingError("directive '@{s}' doesn't exist", .{ self.curr.value });
+                switch (directive) {
+                    .default => {
+                        if (self.default_task != null or self.pending_default) 
+                            return self.parsingError("@default can only be called once", .{});
 
-                if (directive != .default)
-                    return self.parsingError("directive '@{s}' is invalid at top level", .{ self.curr.value });
+                        self.pending_default = true;
+                    },
+                    .alias => {
+                        try self.nextToken();
+                        try self.expect(&.{ .TOK_LPAREN });
 
-                if (self.default_task != null or self.pending_default) 
-                    return self.parsingError("@default can only be called once", .{});
+                        try self.nextToken();
+                        try self.expect(&.{ .TOK_IDENT });
 
-                self.pending_default = true;
+                        self.next_alias = self.curr.value;
+
+                        try self.nextToken();
+                        try self.expect(&.{ .TOK_RPAREN });
+                    },
+                    .invalid => return self.parsingError("directive '@{s}' doesn't exist", .{ self.curr.value }),
+                    else => return self.parsingError("directive '@{s}' is invalid at top level", .{ self.curr.value }),
+                }
+
                 try self.nextToken();
                 continue;
             }
@@ -111,40 +127,13 @@ pub const Parser = struct {
             try nodes.append(self.allocator, node);
         }
 
+        if (self.next_alias) |_|
+            return self.parsingError("no task found after @alias", .{});
+
         if (self.pending_default)
             return self.parsingError("no task found after @default", .{});
 
         return nodes.toOwnedSlice(self.allocator);
-    }
-
-    fn validateDeclaration(self: *@This(), name: []const u8, decl_type: enum {variable, task}) !void {
-        if (name.len > globals.max_name_length)
-            return self.parsingError("variable name exceeds maximum length of {d} characters", .{globals.max_name_length});
-
-        if (decl_type == .variable) {
-            inline for (variables.builtin_variables) |v| {
-                if (std.mem.eql(u8, v, name)) {
-                    return self.parsingError(
-                        "redefinition of builtin variable {s}'{s}'{s} is not allowed",
-                        .{colors.get(.bold), name, colors.get(.reset)}
-                    );
-                }
-            }
-        }
-
-        const res = try (switch (decl_type) {
-            .variable => &self.variable_names,
-            .task => &self.task_names,
-        }).getOrPut(name);
-
-        if (res.found_existing) {
-            return self.parsingError(
-                "{s} {s}'{s}'{s} redefined: first definition on line {d}",
-                .{@tagName(decl_type), colors.get(.bold), name, colors.get(.reset), res.value_ptr.*}
-            );
-        }
-
-        res.value_ptr.* = self.lexer.line;
     }
 
     fn parseDecl(self: *Parser) !Ast {
@@ -161,6 +150,9 @@ pub const Parser = struct {
 
                 if (self.pending_default)
                     return self.parsingError("@default must be followed by a task declaration", .{});
+
+                if (self.next_alias) |_|
+                    return self.parsingError("@alias must be followed by a task declaration", .{});
 
                 try self.nextToken();
                 try self.expect(&.{ .TOK_STRING });
@@ -184,9 +176,16 @@ pub const Parser = struct {
                     self.pending_default = false;
                 }
 
+                const alias = self.next_alias;
+                if (alias) |al| {
+                    try self.validateDeclaration(al, .alias);
+                    self.next_alias = null;
+                }
+
                 return .{
                     .TaskDecl = .{
                         .name = name, 
+                        .alias = alias,
                         .steps = try self.parseTask(),
                     }
                 };
@@ -323,6 +322,36 @@ pub const Parser = struct {
         }
         
         return if_block;
+    }
+
+    fn validateDeclaration(self: *@This(), name: []const u8, decl_type: enum {variable, task, alias}) !void {
+        if (name.len > globals.max_name_length)
+            return self.parsingError("variable name exceeds maximum length of {d} characters", .{globals.max_name_length});
+
+        if (decl_type == .variable) {
+            inline for (variables.builtin_variables) |v| {
+                if (std.mem.eql(u8, v, name)) {
+                    return self.parsingError(
+                        "redefinition of builtin variable {s}'{s}'{s} is not allowed",
+                        .{colors.get(.bold), name, colors.get(.reset)}
+                    );
+                }
+            }
+        }
+
+        const res = try (switch (decl_type) {
+            .variable => &self.variable_names,
+            .task, .alias => &self.task_names,
+        }).getOrPut(name);
+
+        if (res.found_existing) {
+            return self.parsingError(
+                "{s} '{s}{s}{s}' redefined: first definition on line {d}",
+                .{ @tagName(decl_type), colors.get(.red_bold), name, colors.get(.reset), res.value_ptr.* }
+            );
+        }
+
+        res.value_ptr.* = self.lexer.line;
     }
 
     fn nextToken(self: *Parser) !void {

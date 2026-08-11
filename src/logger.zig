@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const colors = @import("colors.zig");
 const config = @import("config.zig");
+const globals = @import("globals.zig");
 
 var io: std.Io = undefined;
 
@@ -12,7 +13,7 @@ pub fn init(cfg: *config.Config, io_: std.Io, env: *std.process.Environ.Map) voi
     const is_tty = stdout.isTty(io) catch false;
     const term_env = env.get("TERM");
 
-    cfg.no_colors = !if (is_tty and builtin.os.tag == .windows) br: {        
+    cfg.no_colors = !if (is_tty and comptime globals.os == .windows) br: {
         std.Io.File.stdout().enableAnsiEscapeCodes(io) catch {};
         break :br stdout.supportsAnsiEscapeCodes(io) catch false;
     } else is_tty and (term_env == null or !std.mem.eql(u8, term_env.?, "dumb"));

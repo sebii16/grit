@@ -6,7 +6,7 @@ pub const ThreadCount = union(enum) {
     count: usize,
 };
 
-const default_shell: []const []const u8 = switch (builtin.os.tag) {
+const default_shell: []const []const u8 = switch (globals.os) {
     .windows => &.{ "cmd.exe", "/C" },
     else => &.{ "sh", "-c" },
 };

@@ -6,6 +6,7 @@
 
 - Variable expansion
 - Default tasks with `@default`
+- Task aliases with `@alias`
 - Automatic `gritfile` discovery from parent directories
 - Built-in variables
 - Parallel and sequential execution
@@ -64,10 +65,11 @@ Directives start with `@` and modify how following commands or tasks behave.
 
 | Directive             | Effect                                                                              |
 | --------------------- | ----------------------------------------------------------------------------------- |
-| `@default`            | Marks the next task as default.                                                 |
+| `@default`            | Marks the next task as default.                                                     |
 | `@parallel`           | Commands after this run parallel to each other, until `@sequential`.                |     
 | `@sequential`         | Commands after this run one at a time (default).                                    |
 | `@if, @elif, @else`   | Executes the first block whose condition is true, or a @else block if none are true |
+| `@alias`              | Create an alias for a task.                                                         |
 
 Parallel and sequential blocks can be mixed inside a task.
 
@@ -91,6 +93,7 @@ build {
     }
 }
 
+@alias(test)
 another_task {
     "echo test"
 }
@@ -108,13 +111,19 @@ grit
 grit another_task
 ```
 
+**Run the aliased task:**
+
+```sh
+grit test
+```
+
 **Use a different file:**
 
 ```sh
 grit -f FILE
 ```
 
-**Use a different shell**
+**Use a different shell:**
 
 ```sh
 grit --shell "pwsh.exe -c"

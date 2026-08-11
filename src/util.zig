@@ -1,6 +1,7 @@
 const std = @import("std");
 const colors = @import("colors.zig");
 const logger = @import("logger.zig");
+const globals = @import("globals.zig");
 
 pub fn parseBool(input: []const u8) error{InvalidBoolean}!bool {
     if (std.mem.eql(u8, input, "true"))
@@ -11,6 +12,8 @@ pub fn parseBool(input: []const u8) error{InvalidBoolean}!bool {
 
     return error.InvalidBoolean;
 }
+
+const sep = if (globals.os == .windows) "\\" else "/";
 
 pub fn findFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, file_name: []const u8, no_discovery: bool) ![]u8 {
     const cwd = try std.process.currentPathAlloc(io, gpa);
@@ -26,7 +29,7 @@ pub fn findFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, fi
         
         if (std.Io.Dir.access(std.Io.Dir.cwd(), io, path, .{})) |_| {
             if (!std.mem.eql(u8, dir, cwd))
-                logger.info("found {s}/{s}{s}{s}", .{ dir, colors.get(.bold), file_name, colors.get(.reset) });
+                logger.info("found {s}{s}{s}{s}{s}", .{ dir, sep, colors.get(.bold), file_name, colors.get(.reset) });
 
             return try arena.dupe(u8, dir);
         } else |err| {
@@ -69,11 +72,9 @@ pub fn splitString(allocator: std.mem.Allocator, input: []const u8, delimiter: u
 
 // uses the levenshtein distance algorithm: https://en.wikipedia.org/wiki/Levenshtein_distance
 pub fn getEditDistance(a: []const u8, b: []const u8) ?usize {
-    if (a.len == 0 or b.len == 0) return null;
+    if (@min(a.len, b.len) == 0 or @max(a.len, b.len) >= 64) return null;
 
     var row: [64]usize = undefined;
-
-    if (@max(a.len, b.len) > 64) return null;
 
     for (row[0..b.len + 1], 0..) |*cell, i| 
         cell.* = i;

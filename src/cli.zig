@@ -83,8 +83,9 @@ pub const flag_list = blk: {
             if (opt.short) |s| {
                 break :blk1 std.fmt.comptimePrint("-{c}, ", .{s});
             } else {
-                // 4 spaces instead of "-c, "
+                // options that have no short version get appended to the end of its category
                 append_to_end = true;
+                // 4 spaces instead of "-c, "
                 break :blk1 "    ";
             }
         };
@@ -289,26 +290,23 @@ fn usageError(wrong_usage_type: WrongUsageType, option: []const u8, arg: ?[]cons
     }
 }
 
-const SimilarOptMatch = struct {
+const SimilarOptions = struct {
     str: ?[]const u8 = null,
     edit_distance: usize = 3
 };
 
 fn getSimilarOption(option: []const u8) ?[]const u8 {
     const stripped = std.mem.trimStart(u8, option, "-");
-    var best_match: SimilarOptMatch = .{};
+    var best_match: SimilarOptions = .{};
 
     for (cli_options) |opt| {
         const edit_distance = util.getEditDistance(stripped, opt.long) orelse continue;
 
-        if (edit_distance < best_match.edit_distance)
+        if (edit_distance <= 2 and edit_distance < best_match.edit_distance)
             best_match = .{ .edit_distance = edit_distance, .str = opt.long };
     }
 
-    if (best_match.edit_distance <= 2)
-        return best_match.str;
-
-    return null;
+    return best_match.str;
 }
 
 fn getExpectedArg(option: []const u8) []const u8 {

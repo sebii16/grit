@@ -72,8 +72,8 @@ pub const Vars = struct {
         const cwd = try std.process.currentPathAlloc(self.io, self.allocator);
         const root_dir = cfg.file_dir orelse cwd;
 
-        try self.map.put("OS", .{ .string = @tagName(builtin.os.tag) });
-        try self.map.put("ARCH", .{ .string = @tagName(builtin.cpu.arch) });
+        try self.map.put("OS", .{ .string = @tagName(globals.os) });
+        try self.map.put("ARCH", .{ .string = @tagName(globals.arch) });
         try self.map.put("CWD", .{ .string = cwd });
         try self.map.put("GRIT_VER", .{ .version = globals.ver });
         try self.map.put("ROOT_DIR", .{ .string = root_dir });
