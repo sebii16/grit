@@ -12,7 +12,7 @@ pub fn parseBool(input: []const u8) error{InvalidBoolean}!bool {
     return error.InvalidBoolean;
 }
 
-pub fn findFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, file_name: []const u8) ![]u8 {
+pub fn findFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, file_name: []const u8, no_discovery: bool) ![]u8 {
     const cwd = try std.process.currentPathAlloc(io, gpa);
     defer gpa.free(cwd);
 
@@ -31,7 +31,7 @@ pub fn findFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, io: std.Io, fi
             return try arena.dupe(u8, dir);
         } else |err| {
             switch (err) {
-                error.FileNotFound => {},
+                error.FileNotFound => if (no_discovery) break,
                 else => break,
             }
         }
@@ -65,4 +65,44 @@ pub fn splitString(allocator: std.mem.Allocator, input: []const u8, delimiter: u
     }
 
     return try list.toOwnedSlice(allocator);
+}
+
+// uses the levenshtein distance algorithm: https://en.wikipedia.org/wiki/Levenshtein_distance
+pub fn getEditDistance(a: []const u8, b: []const u8) ?usize {
+    if (a.len == 0 or b.len == 0) return null;
+
+    var row: [64]usize = undefined;
+
+    if (@max(a.len, b.len) > 64) return null;
+
+    for (row[0..b.len + 1], 0..) |*cell, i| 
+        cell.* = i;
+
+    for (a, 0..) |ca, i| {
+        var diagonal = row[0];
+        row[0] = i + 1;
+
+        for (b, 0..) |cb, j| {
+            const above = row[j + 1];
+            const left = row[j];
+
+            const cost = @intFromBool(ca != cb);
+
+            const delete = above + 1;
+            const insert = left + 1;
+            const replace = diagonal + cost;
+
+            const min = @min(delete, @min(insert, replace));
+
+            row[j + 1] = min;
+
+            diagonal = above;
+        }
+    }
+
+    const distance = row[b.len];
+
+    logger.debug("edit distance {s} to {s}: {d}", .{a, b, distance});
+
+    return distance;
 }

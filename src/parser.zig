@@ -41,6 +41,24 @@ pub const Ast = union(enum) {
     TaskDecl: Task,
 };
 
+
+pub fn listAllTasks(self: []const Ast) void {
+    if (self.len == 0) {
+        logger.err("there are no tasks", .{});
+        return;
+    }
+
+    for (self) |node| {
+        switch (node) {
+            .VarDecl => {},
+            .TaskDecl => |task| {
+                //if (task.description) |desc| logger.out(true, .none, null, "{s}", .{desc});
+                logger.out(true, .none, null, "{s}", .{task.name});
+            }
+        }
+    }
+}
+
 pub const Parser = struct {
     lexer: lexer.Lexer,
     curr: lexer.Token = .{ .value = &[_]u8{}, .type = .TOK__INVALID },

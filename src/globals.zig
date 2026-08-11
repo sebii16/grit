@@ -9,7 +9,7 @@ pub const max_name_length = 256;
 pub const ver = std.SemanticVersion{
     .major = 0,
     .minor = 8,
-    .patch = 1
+    .patch = 2
 };
 
 pub const ver_str = std.fmt.comptimePrint("{d}.{d}.{d}", .{ ver.major, ver.minor, ver.patch });

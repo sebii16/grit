@@ -30,13 +30,13 @@ pub fn main(init: std.process.Init) u8 {
         .version => {
             logger.out(true, .none, null, "{s}", .{ globals.ver_msg });
         },
-        .run, .dump_vars => {
+        .run, .dump_vars, .list_tasks => {
             const src = blk: {
                 if (cfg.src) |src| {
                     cfg.file_name = "<eval>";
                     break :blk src;
                 }
-                cfg.file_dir = util.findFile(gpa, arena, io, cfg.file_name) catch return 1;
+                cfg.file_dir = util.findFile(gpa, arena, io, cfg.file_name, cfg.no_discovery) catch return 1;
                 break :blk util.readFile(arena, gpa, io, cfg.file_dir.?, cfg.file_name) catch return 1;
             };
 
@@ -51,6 +51,7 @@ pub fn main(init: std.process.Init) u8 {
             switch (mode) {
                 .run => runner.runTask(arena, gpa, io, ast, cfg, &parser, &vars) catch return 1,
                 .dump_vars => vars.dump(gpa) catch return 1,
+                .list_tasks => p.listAllTasks(ast),
                 else => unreachable,
             }
         },
