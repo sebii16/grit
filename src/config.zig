@@ -26,4 +26,5 @@ pub const Config = struct {
     no_colors: bool = false,
     quiet: bool = false,
     no_discovery: bool = false,
+    parallel: bool = false,
 };

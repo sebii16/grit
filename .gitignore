@@ -3,5 +3,4 @@ grit-d
 *.exe
 *.pdb
 *.lnk
-tests/
 gen_cli_md

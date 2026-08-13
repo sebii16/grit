@@ -89,6 +89,8 @@ pub const Parser = struct {
         }
 
         var nodes: std.ArrayList(Ast) = .empty;
+        defer nodes.deinit(self.temp_allocator);
+
         try self.nextToken();
 
         // parse top level
@@ -124,7 +126,7 @@ pub const Parser = struct {
             }
 
             const node = try self.parseDecl();
-            try nodes.append(self.allocator, node);
+            try nodes.append(self.temp_allocator, node);
         }
 
         if (self.next_alias) |_|
@@ -133,7 +135,12 @@ pub const Parser = struct {
         if (self.pending_default)
             return self.parsingError("no task found after @default", .{});
 
-        return nodes.toOwnedSlice(self.allocator);
+        //return nodes.toOwnedSlice(self.allocator);
+
+        if (nodes.items.len == 0)
+            return &.{};
+
+        return self.allocator.dupe(Ast, nodes.items);
     }
 
     fn parseDecl(self: *Parser) !Ast {
@@ -378,3 +385,125 @@ pub const Parser = struct {
         return self.parsingError("unexpected token '{s}'", .{ @tagName(self.curr.type) });
     }
 };
+
+fn initTestParser(
+    arena: *std.heap.ArenaAllocator,
+    src: []const u8,
+) Parser {
+    return Parser.init(
+        arena.allocator(),
+        std.testing.allocator,
+        src,
+    );
+}
+fn expectParseError(src: []const u8) !void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var parser = initTestParser(&arena, src);
+    try std.testing.expectError(error.SyntaxError, parser.parseAll());
+}
+
+fn expectParseError1(src: []const u8, err: anyerror) !void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var parser = initTestParser(&arena, src);
+    try std.testing.expectError(err, parser.parseAll());
+}
+
+test "empty file" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var parser = initTestParser(&arena, "");
+    const ast = try parser.parseAll();
+
+    try std.testing.expectEqual(@as(usize, 0), ast.len);
+}
+
+test "empty task" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var parser = initTestParser(&arena, "build {}");
+    const ast = try parser.parseAll();
+
+    try std.testing.expectEqual(@as(usize, 1), ast.len);
+    try std.testing.expectEqualStrings("build", ast[0].TaskDecl.name);
+}
+
+test "@alias" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var parser = initTestParser(&arena, "@alias(a) test{}");
+    const ast = try parser.parseAll();
+
+    try std.testing.expectEqualStrings("a", ast[0].TaskDecl.alias.?);
+
+    // ident instead of string
+    try expectParseError("@alias(a)");
+
+    try expectParseError("@alias test");
+
+    // empty alias
+    try expectParseError("@alias('') test");
+
+    try expectParseError1("@alias(') test", error.UnterminatedString);
+
+    // duplicate alias
+    try expectParseError("@alias('a') test @alias('a') test1");
+}
+
+test "variable without value" {
+    try expectParseError("TEST =");
+}
+
+test "duplicate variable" {
+    try expectParseError("TEST = '' TEST = ''");
+}
+
+test "duplicate tasks" {
+    try expectParseError("TEST {} TEST {}");
+}
+
+test "default rule" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var parser = initTestParser(&arena, "@default test{}");
+    _ = try parser.parseAll();
+
+    try std.testing.expectEqualStrings("test", parser.default_task.?);
+    try std.testing.expectEqual(false, parser.pending_default);
+
+    // default without task
+    try expectParseError("@default");
+
+    // default inside of task
+    try expectParseError("test { @default}");
+
+    // default called twice
+    try expectParseError("@default test { } @default test1");
+}
+
+test "unknown directive" {
+    try expectParseError("@edawdwa test{}");
+
+}
+
+test "if errors" {
+    // else and elif without if
+    try expectParseError("@else {}");
+    try expectParseError("@elif {}");
+
+    // double else
+    try expectParseError("@if OS == 'windows' {} @else {} @else {}");
+
+    // if without condition
+    try expectParseError("@if {}");
+
+    // elif without condition
+    try expectParseError("@if OS == 'windows' @elif");
+}

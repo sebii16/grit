@@ -33,11 +33,10 @@ pub fn runTask(
                 if (!std.mem.eql(u8, task.name, cfg.task.?) and (!has_alias or !std.mem.eql(u8, task.alias.?, cfg.task.?))) continue;
 
                 var parallel_batch: std.ArrayList([]const u8) = .empty;
-                var parallel = false;
 
                 logger.info("selected task: {s}{s}{s}{s}", .{colors.get(.bold), if (is_default_task) "@default " else "", task.name, colors.get(.reset)});
 
-                try processSteps(arena, gpa, io, task.steps, cfg, vars, &parallel_batch, &parallel);
+                try processSteps(arena, gpa, io, task.steps, cfg, vars, &parallel_batch, task.name);
 
                 if (parallel_batch.items.len > 0)
                     try scheduler.scheduleCommands(io, gpa, parallel_batch.items, cfg);
@@ -65,43 +64,45 @@ fn processSteps(
     cfg: *config.Config,
     vars: *const variables.Vars,
     parallel_batch: *std.ArrayList([]const u8),
-    parallel: *bool) !void {
+    task: []const u8) !void {
 
     for (steps) |step| {
         switch (step) {
             .directive => |d| {
                 switch (d) {
                     .sequential => {
-                        if (parallel.* and parallel_batch.items.len > 0) {
+                        if (cfg.parallel and parallel_batch.items.len > 0) {
                             // execute all commands that are already in parallel_batch before changing to sequential mode
                             try scheduler.scheduleCommands(io, gpa, parallel_batch.items, cfg);
                             parallel_batch.clearRetainingCapacity();
                         }
-                        parallel.* = false;
+                        cfg.parallel = false;
                     },
-                    .parallel => parallel.* = true,
+                    .parallel => cfg.parallel = true,
                     else => unreachable,
                 }
-                logger.debug("parallel = {}", .{ parallel.* });
+                logger.debug("parallel = {}", .{ cfg.parallel });
             },
             .cmd => |cmd| {
                 const expanded = 
                     if (!cfg.no_expand)
                         vars.expand(gpa, cmd, cfg.task.?) catch |e| {
+                            if (e == error.InvalidVariable) return e;
+
                             logger.err("variable expansion for command {s}'{s}'{s} failed", .{ colors.get(.bold), cmd, colors.get(.reset) });
                             logger.debug("{s}", .{ @errorName(e) });
                             return e;
-                        }
+                        } orelse cmd
                     else cmd;
 
-                if (parallel.*)
+                if (cfg.parallel)
                     try parallel_batch.append(arena, expanded)
                 else 
                     try scheduler.scheduleCommands(io, gpa, &.{expanded}, cfg);
             },
             .if_block => |block| {
                 if (try block.selectBlock(vars)) |selected_steps|
-                    try processSteps(arena, gpa, io, selected_steps, cfg, vars, parallel_batch, parallel);
+                    try processSteps(arena, gpa, io, selected_steps, cfg, vars, parallel_batch, task);
             },
         }
     }

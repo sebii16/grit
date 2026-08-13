@@ -51,3 +51,8 @@ gen_cli_md {
         "./gen_cli_md"
     }
 }
+
+@alias(t)
+test {
+    "zig test src\parser.zig"
+}

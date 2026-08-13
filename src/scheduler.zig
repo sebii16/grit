@@ -74,11 +74,7 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
 }
 
 fn worker(gpa: std.mem.Allocator, io: std.Io, cfg: *const config.Config, cmd: []const u8, parallel: bool) !void {
-    if (parallel)
-        logger.outLocked(.none, "{s}", .{ cmd })
-    else
-        logger.out(true, .none, null, "{s}", .{ cmd });
-
+    logger.outLocked(.none, parallel, "{s}", .{ cmd });
 
     const argv = try gpa.alloc([]const u8, cfg.shell.len + 1);
     defer gpa.free(argv);
@@ -90,7 +86,7 @@ fn worker(gpa: std.mem.Allocator, io: std.Io, cfg: *const config.Config, cmd: []
     if (comptime builtin.mode == .Debug) {
         const argv_joined = try std.mem.join(gpa, " ", argv);
         defer gpa.free(argv_joined);
-        logger.debug("child process argv: {s}", .{argv_joined});
+        logger.outLocked(.debug, parallel, "child process argv: {s}", .{argv_joined});
     }
 
     const res = if (cfg.file_dir) |cwd| 

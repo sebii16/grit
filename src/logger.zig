@@ -51,14 +51,18 @@ pub fn syntax(line: ?u32, comptime fmt: []const u8, args: anytype) void {
 
 pub var log_mutex: std.Io.Mutex = .init;
 
-pub fn outLocked(level: LogLevel, comptime fmt: []const u8, args: anytype) void {
-    log_mutex.lock(io) catch return;
-    defer log_mutex.unlock(io);
+pub fn outLocked(level: LogLevel, lock: bool, comptime fmt: []const u8, args: anytype) void {
+    if (lock)
+        log_mutex.lock(io) catch return;
+
+    defer if (lock)
+        log_mutex.unlock(io);
+
     out(true, level, null, fmt, args);
 }
 
 pub fn out(nl: bool, level: LogLevel, line: ?u32, comptime fmt: []const u8, args: anytype) void {
-    if (level != .err and config.Config.current.quiet) return;
+    if (builtin.is_test or (level != .err and config.Config.current.quiet)) return;
     
     var stdout_writer = std.Io.File.stdout().writer(io, &.{});
     var stderr_writer = std.Io.File.stderr().writer(io, &.{});

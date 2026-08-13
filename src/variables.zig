@@ -109,7 +109,10 @@ pub const Vars = struct {
         return self;
     }
 
-    pub fn expand(self: *const @This(), gpa: std.mem.Allocator, input: []const u8, task_name: []const u8) ![]u8 {
+    pub fn expand(self: *const @This(), gpa: std.mem.Allocator, input: []const u8, task_name: []const u8) !?[]u8 {
+        // return null if there is nothing to expand
+        _ = std.mem.findScalar(u8, input, '$') orelse return null;
+
         var expanded: std.ArrayList(u8) = .empty;
 
         const len = input.len;
@@ -153,7 +156,7 @@ pub const Vars = struct {
             try expanded.append(self.allocator, char);
         }
 
-        return try expanded.toOwnedSlice(self.allocator);
+        return expanded.items;
     }
 
     pub fn getVariable(self: *const @This(), name: []const u8) !Value {
@@ -174,9 +177,12 @@ fn reportBadVariable(full_input: []const u8, task_name: []const u8, start: usize
         logger.out(false, .none, null, "\x1b[{d}C", .{ start - 1});
     }
 
+    const tildes = [_]u8{'~'} ** 128;
+
     logger.out(true, .none, null, "{s}^{s}{s}", .{
         colors.get(.red_bold),
-        ([_]u8{'~'} ** 128)[0..@min(end - start, 128)],
+       // ([_]u8{'~'} ** 128)[0..@min(end - start, 128)],
+        tildes[0..@min(end -| start, tildes.len)],
         colors.get(.reset) 
     });
 
