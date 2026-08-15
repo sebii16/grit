@@ -1,11 +1,10 @@
 FILES = "src/main.zig"
 OUT = "grit"
-DEBUG_FLAGS = "-O Debug -freference-trace=10 -lc"
-RELEASE_FLAGS = "-O ReleaseFast -fstrip -lc"
+DEBUG_FLAGS = "-O Debug -freference-trace=10"
+RELEASE_FLAGS = "-O ReleaseFast -fstrip"
 
 @alias(c)
 clean {
-    @parallel
     "rm -f *.exe"
     "rm -f *.pdb"
     "rm -f $OUT"
@@ -54,5 +53,5 @@ gen_cli_md {
 
 @alias(t)
 test {
-    "zig test src\parser.zig"
+    "zig test src/parser.zig"
 }

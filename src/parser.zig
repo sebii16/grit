@@ -333,7 +333,13 @@ pub const Parser = struct {
 
     fn validateDeclaration(self: *@This(), name: []const u8, decl_type: enum {variable, task, alias}) !void {
         if (name.len > globals.max_name_length)
-            return self.parsingError("variable name exceeds maximum length of {d} characters", .{globals.max_name_length});
+            return self.parsingError("{s} name exceeds maximum length of {d} characters", .{@tagName(decl_type), globals.max_name_length});
+
+        if (!std.ascii.isAlphabetic(name[0]) and name[0] != '_') {
+            return self.parsingError("{s} name must start with a letter or '_', starts with '{s}{c}{s}'", .{
+                @tagName(decl_type), colors.get(.red_bold), name[0], colors.get(.reset)
+            });
+        }
 
         if (decl_type == .variable) {
             inline for (variables.builtin_variables) |v| {
@@ -386,16 +392,10 @@ pub const Parser = struct {
     }
 };
 
-fn initTestParser(
-    arena: *std.heap.ArenaAllocator,
-    src: []const u8,
-) Parser {
-    return Parser.init(
-        arena.allocator(),
-        std.testing.allocator,
-        src,
-    );
+fn initTestParser( arena: *std.heap.ArenaAllocator, src: []const u8) Parser {
+    return Parser.init(arena.allocator(), std.testing.allocator, src);
 }
+
 fn expectParseError(src: []const u8) !void {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -422,56 +422,72 @@ test "empty file" {
     try std.testing.expectEqual(@as(usize, 0), ast.len);
 }
 
-test "empty task" {
+test "tasks" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
-    var parser = initTestParser(&arena, "build {}");
+    // valid case:
+    var parser = initTestParser(&arena, "_test { 'echo test' }");
     const ast = try parser.parseAll();
 
     try std.testing.expectEqual(@as(usize, 1), ast.len);
-    try std.testing.expectEqualStrings("build", ast[0].TaskDecl.name);
+    try std.testing.expectEqualStrings("_test", ast[0].TaskDecl.name);
+    try std.testing.expectEqualStrings("echo test", ast[0].TaskDecl.steps[0].cmd);
+
+    // duplicate
+    try expectParseError("TEST {} TEST {}");
+
+    // invalid name (cannot start with 1)
+    try expectParseError("1TEST = {}");
+}
+
+test "variables" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    // valid case:
+    var parser = initTestParser(&arena, "_test = 'test'");
+    const ast = try parser.parseAll();
+
+    try std.testing.expectEqual(@as(usize, 1), ast.len);
+    try std.testing.expectEqualStrings("_test", ast[0].VarDecl.name);
+    try std.testing.expectEqualStrings("test", ast[0].VarDecl.value);
+
+    // no value
+    try expectParseError("TEST =");
+
+    // duplicate
+    try expectParseError("TEST = '' TEST = ''");
+
+    // invalid name (cannot start with 1)
+    try expectParseError("1TEST = ''");
 }
 
 test "@alias" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
+    // valid case:
     var parser = initTestParser(&arena, "@alias(a) test{}");
     const ast = try parser.parseAll();
 
     try std.testing.expectEqualStrings("a", ast[0].TaskDecl.alias.?);
 
-    // ident instead of string
-    try expectParseError("@alias(a)");
-
-    try expectParseError("@alias test");
+    // no braces
+    try expectParseError("@alias test {}");
 
     // empty alias
-    try expectParseError("@alias('') test");
-
-    try expectParseError1("@alias(') test", error.UnterminatedString);
+    try expectParseError("@alias() test {}");
 
     // duplicate alias
-    try expectParseError("@alias('a') test @alias('a') test1");
+    try expectParseError("@alias(a) test {} @alias(a) test1 {}");
 }
 
-test "variable without value" {
-    try expectParseError("TEST =");
-}
-
-test "duplicate variable" {
-    try expectParseError("TEST = '' TEST = ''");
-}
-
-test "duplicate tasks" {
-    try expectParseError("TEST {} TEST {}");
-}
-
-test "default rule" {
+test "default task" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
+    // valid case:
     var parser = initTestParser(&arena, "@default test{}");
     _ = try parser.parseAll();
 
@@ -490,10 +506,9 @@ test "default rule" {
 
 test "unknown directive" {
     try expectParseError("@edawdwa test{}");
-
 }
 
-test "if errors" {
+test "if statements" {
     // else and elif without if
     try expectParseError("@else {}");
     try expectParseError("@elif {}");

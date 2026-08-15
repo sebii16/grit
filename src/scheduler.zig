@@ -59,8 +59,8 @@ pub fn scheduleCommands(io: std.Io, gpa: std.mem.Allocator, items: []const []con
 
         for (workers[0..spawned], 0..) |*w, i| {
             w.await(io) catch |e| {
-                logger.out(true, if (cfg.ignore_errors) .warning else .err, null, "command {s}'{s}'{s} failed{s}", .{
-                    colors.get(.bold), batch[i], colors.get(.reset), if (cfg.ignore_errors) "" else ". stopping"
+                logger.out(true, if (cfg.ignore_errors) .warning else .err, null, "command '{s}{s}{s}' failed{s}", .{
+                    colors.get(.bold), batch[i], colors.get(.reset), if (cfg.ignore_errors) "" else ". stopping",
                 });
 
                 if (!cfg.ignore_errors)
@@ -89,6 +89,7 @@ fn worker(gpa: std.mem.Allocator, io: std.Io, cfg: *const config.Config, cmd: []
         logger.outLocked(.debug, parallel, "child process argv: {s}", .{argv_joined});
     }
 
+    // if file_dir is set execute all commands from that path
     const res = if (cfg.file_dir) |cwd| 
         try std.process.run(gpa, io, .{ .argv = argv, .cwd = .{ .path = cwd } })
     else
@@ -101,10 +102,11 @@ fn worker(gpa: std.mem.Allocator, io: std.Io, cfg: *const config.Config, cmd: []
         const output = try std.mem.concat(gpa, u8, &.{res.stdout, res.stderr});
         defer gpa.free(output);
 
-        if (parallel) 
+        if (parallel)
             try logger.log_mutex.lock(io);
 
         defer if (parallel) logger.log_mutex.unlock(io);
+
         try std.Io.File.stdout().writeStreamingAll(io, output);
     }
 

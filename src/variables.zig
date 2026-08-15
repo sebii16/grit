@@ -5,9 +5,6 @@ const globals = @import("globals.zig");
 const logger = @import("logger.zig");
 const colors = @import("colors.zig");
 const config = @import("config.zig");
-const c = @cImport({
-    @cInclude("time.h");
-});
 
 pub const Value = union(enum) {
     string: []const u8,
@@ -24,6 +21,7 @@ pub const Value = union(enum) {
 
         switch (self) {
             .string => |s| {
+                // no need to allocate here because all string variables are already allocated or comptime known
                 res.str = s;
             },
             .version => |v| {
@@ -64,7 +62,7 @@ pub const Vars = struct {
             const value = entry.value_ptr.*.asString(gpa) catch continue;
             defer if (value.allocated) gpa.free(value.str);
 
-            logger.out(true, .none, null, "{s} = {s}", .{entry.key_ptr.*, value.str});
+            logger.out(true, .none, null, "{s} = \"{s}\"", .{entry.key_ptr.*, value.str});
         }
     }
 
@@ -92,14 +90,7 @@ pub const Vars = struct {
 
         for (ast) |node| {
             switch (node) {
-                .VarDecl => |v| {
-                    if (self.map.contains(v.name)) {
-                        // this error shouldn't be able to happen because parser avoids it
-                        logger.debug("ERROR: variable '{s}' redefined THIS IS A BUG AND SHOULD NEVER HAPPEN HERE", .{v.name});
-                    }
-
-                    try self.map.put(v.name, .{ .string = v.value });
-                },
+                .VarDecl => |v| try self.map.put(v.name, .{ .string = v.value }),
                 else => {},
             }
         }
@@ -165,7 +156,7 @@ pub const Vars = struct {
 };
 
 fn reportBadVariable(full_input: []const u8, task_name: []const u8, start: usize, end: usize, err: anyerror) anyerror {
-    logger.syntax(null, "undefined or invalid variable in task {s}'{s}'{s}:\n", .{ colors.get(.bold), task_name, colors.get(.reset) });
+    logger.syntax(null, "undefined or invalid variable in task '{s}{s}{s}':\n", .{ colors.get(.bold), task_name, colors.get(.reset) });
 
     const start_input = full_input[0..start - 1];
     const variable = full_input[start - 1..end];
@@ -181,7 +172,6 @@ fn reportBadVariable(full_input: []const u8, task_name: []const u8, start: usize
 
     logger.out(true, .none, null, "{s}^{s}{s}", .{
         colors.get(.red_bold),
-       // ([_]u8{'~'} ** 128)[0..@min(end - start, 128)],
         tildes[0..@min(end -| start, tildes.len)],
         colors.get(.reset) 
     });
